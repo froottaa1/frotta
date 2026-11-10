@@ -7,18 +7,14 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.frotta.transfer.DataExporter
-import com.frotta.transfer.MediaOrganizer
 
 class MainActivity : ComponentActivity() {
 
-    // طلب الصلاحيات اللازمة (صور، رسائل، مكالمات)
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -32,8 +28,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // التحقق من الصلاحيات عند فتح التطبيق
         checkAndRequestPermissions()
 
         setContent {
@@ -41,23 +35,7 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.background
             ) {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(16.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(text = "تطبيق Frotta للنقل الذكي", style = MaterialTheme.typography.headlineMedium)
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    Button(onClick = {
-                        // تجهيز سحب الصور والمكالمات والرسائل
-                        val mediaList = MediaOrganizer.getDeviceMedia(applicationContext)
-                        val backupFile = DataExporter.exportSmsAndCallsToJson(applicationContext)
-                        Toast.makeText(this@MainActivity, "تم تجهيز ${mediaList.size} صورة وملف النسخة الاحتياطية", Toast.LENGTH_LONG).show()
-                    }) {
-                        Text(text = "تجهيز وفحص البيانات للإرسال")
-                    }
-                }
+                TransferScreen()
             }
         }
     }
