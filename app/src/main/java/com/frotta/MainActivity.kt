@@ -45,7 +45,6 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.READ_SMS,
             Manifest.permission.READ_CALL_LOG,
-            Manifest.permission.WRITE_SMS,
             Manifest.permission.WRITE_CALL_LOG
         )
 
