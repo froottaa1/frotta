@@ -47,6 +47,7 @@ data class OutFile(
 )
 
 fun mediaKindOf(name: String): String {
+    if (name.startsWith("__frotta_")) return "data"
     return when (name.substringAfterLast('.', "").lowercase()) {
         "jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "dng" -> "photos"
         "mp4", "mkv", "3gp", "mov", "avi", "webm", "m4v" -> "videos"
@@ -60,7 +61,8 @@ class NearbyManager(
     private val onStatus: (String) -> Unit,
     private val onConnected: () -> Unit,
     private val onDisconnected: () -> Unit,
-    private val onTransfer: (TransferItem) -> Unit
+    private val onTransfer: (TransferItem) -> Unit,
+    private val onDataFile: (String, File) -> Unit = { _, _ -> }
 ) {
     private val appContext = context.applicationContext
     private val client: ConnectionsClient = Nearby.getConnectionsClient(appContext)
@@ -307,6 +309,23 @@ class NearbyManager(
         val folder = rel.substringBeforeLast('/', "")
         val total = payload.asFile()?.size ?: 0L
         onTransfer(TransferItem(id, name, false, total, total, false, false))
+
+        if (name.startsWith("__frotta_")) {
+            val kind = name.removePrefix("__frotta_").substringBefore('.')
+            saver.execute {
+                val target = File(appContext.cacheDir, name)
+                val ok = copyToFile(payload, target)
+                mainHandler.post {
+                    incoming.remove(id)
+                    fileIds.remove(id)
+                    fileNames.remove(id)
+                    onTransfer(TransferItem(id, name, false, total, total, ok, !ok))
+                    if (ok) onDataFile(kind, target)
+                }
+            }
+            return
+        }
+
         saver.execute {
             val ok = saveFile(payload, name, folder)
             mainHandler.post {
@@ -316,6 +335,18 @@ class NearbyManager(
                 onTransfer(TransferItem(id, name, false, total, total, ok, !ok))
                 if (ok) onStatus("تم حفظ: $name")
             }
+        }
+    }
+
+    private fun copyToFile(payload: Payload, target: File): Boolean {
+        val pfd = payload.asFile()?.asParcelFileDescriptor() ?: return false
+        return try {
+            ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input ->
+                FileOutputStream(target).use { o -> input.copyTo(o) }
+            }
+            true
+        } catch (e: Exception) {
+            false
         }
     }
 
