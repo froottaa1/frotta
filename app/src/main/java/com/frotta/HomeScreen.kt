@@ -5,9 +5,26 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,20 +34,29 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Error
+import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.FileUpload
+import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -38,8 +64,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +80,11 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import java.security.SecureRandom
+import kotlinx.coroutines.delay
+
+private val Ink = Color(0xFF111111)
+private val Yellow = Color(0xFFFFD600)
+private val SoftYellow = Color(0xFFFFE866)
 
 private fun requiredPermissions(): Array<String> {
     val list = mutableListOf(
@@ -88,6 +123,7 @@ fun HomeScreen() {
     var screen by remember { mutableStateOf("home") }
     var status by remember { mutableStateOf("") }
     var connected by remember { mutableStateOf(false) }
+    var searching by remember { mutableStateOf(false) }
     var token by remember { mutableStateOf("") }
     var showManual by remember { mutableStateOf(false) }
     var manualCode by remember { mutableStateOf("") }
@@ -98,7 +134,10 @@ fun HomeScreen() {
         NearbyManager(
             context = context,
             onStatus = { status = it },
-            onConnected = { connected = true },
+            onConnected = {
+                connected = true
+                searching = false
+            },
             onDisconnected = { connected = false },
             onTransfer = { item ->
                 val i = transfers.indexOfFirst { it.id == item.id }
@@ -119,6 +158,7 @@ fun HomeScreen() {
             .addOnSuccessListener { barcode ->
                 val raw = barcode.rawValue ?: ""
                 if (raw.startsWith("FROTTA:")) {
+                    searching = true
                     manager.startSearching(myName, raw.removePrefix("FROTTA:"))
                 } else {
                     status = "الكود ده مش تابع لتطبيق Frotta"
@@ -138,6 +178,7 @@ fun HomeScreen() {
         if (code.length != 8) {
             status = "الكود لازم يكون 8 حروف وأرقام"
         } else {
+            searching = true
             manager.startSearching(myName, code)
         }
     }
@@ -171,6 +212,7 @@ fun HomeScreen() {
         manager.stopAll()
         transfers.clear()
         connected = false
+        searching = false
         token = ""
         status = ""
         showManual = false
@@ -183,225 +225,465 @@ fun HomeScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(20.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 16.dp)
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(
-                painter = painterResource(R.drawable.ic_logo),
-                contentDescription = null,
-                modifier = Modifier.size(56.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = "Frotta",
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold
+        Spacer(modifier = Modifier.height(20.dp))
+
+        if (screen != "home") {
+            TextButton(onClick = { goHome() }) {
+                Icon(
+                    imageVector = Icons.Rounded.ArrowForward,
+                    contentDescription = null,
+                    tint = Ink,
+                    modifier = Modifier.size(20.dp)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "أبو عمر الخيامي سوفت وير",
-                    style = MaterialTheme.typography.bodyLarge
+                    text = "رجوع",
+                    color = Ink,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
                 )
             }
         }
-        Spacer(modifier = Modifier.height(32.dp))
 
-        if (screen == "home") {
-            ActionCard("📤", "إرسال", "امسح الكود أو اكتبه يدوياً") {
-                screen = "send"
-                permissionLauncher.launch(requiredPermissions())
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            ActionCard("📥", "استقبال", "اعرض كود عشان الجهاز التاني يتصل") {
-                screen = "receive"
-                permissionLauncher.launch(requiredPermissions())
-            }
-        } else {
-            Text(
-                text = if (screen == "send") "إرسال" else "استقبال",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            if (status.isNotEmpty()) {
-                Text(text = status, style = MaterialTheme.typography.bodyMedium)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
+        AppHeader()
+        Spacer(modifier = Modifier.height(28.dp))
 
-            if (screen == "receive" && !connected && qrImage != null) {
-                Card(
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                    colors = CardDefaults.cardColors(containerColor = Color.White)
-                ) {
-                    Image(
-                        bitmap = qrImage,
-                        contentDescription = "QR",
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .size(240.dp)
+        Crossfade(targetState = screen) { s ->
+            Column {
+                if (s == "home") {
+                    AppearIn(150) {
+                        BigCard(Icons.Rounded.FileUpload, "إرسال", "امسح الكود أو اكتبه يدوياً") {
+                            screen = "send"
+                            permissionLauncher.launch(requiredPermissions())
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    AppearIn(300) {
+                        BigCard(Icons.Rounded.FileDownload, "استقبال", "اعرض كود عشان الجهاز التاني يتصل") {
+                            screen = "receive"
+                            permissionLauncher.launch(requiredPermissions())
+                        }
+                    }
+                } else {
+                    Text(
+                        text = if (s == "send") "إرسال" else "استقبال",
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Ink
                     )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "أو اكتب الكود ده في الجهاز التاني:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-                Text(
-                    text = token.chunked(4).joinToString("  "),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
+                    Spacer(modifier = Modifier.height(12.dp))
 
-            if (screen == "send" && !connected) {
-                Button(
-                    onClick = { startScan() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
-                ) {
-                    Text("امسح الكود")
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = { showManual = !showManual },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                ) {
-                    Text("إدخال الكود يدوياً")
-                }
-                if (showManual) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = manualCode,
-                        onValueChange = { input ->
-                            manualCode = input.uppercase()
-                                .filter { it.isLetterOrDigit() }
-                                .take(8)
-                        },
-                        label = { Text("الكود (8 حروف وأرقام)") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Characters
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = { connectManual() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
+                    AnimatedVisibility(visible = status.isNotEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(SoftYellow)
+                                .padding(14.dp)
+                        ) {
+                            Text(text = status, color = Ink, fontSize = 14.sp)
+                        }
+                    }
+
+                    if (s == "receive" && !connected && qrImage != null) {
+                        AppearIn(100) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(28.dp))
+                                        .background(Color.White)
+                                        .padding(18.dp)
+                                ) {
+                                    Image(
+                                        bitmap = qrImage,
+                                        contentDescription = "QR",
+                                        modifier = Modifier.size(230.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "أو اكتب الكود ده في الجهاز التاني",
+                            color = Ink,
+                            fontSize = 14.sp,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(Ink)
+                                .padding(horizontal = 22.dp, vertical = 12.dp)
+                        ) {
+                            Text(
+                                text = token.chunked(4).joinToString("  "),
+                                color = Yellow,
+                                fontSize = 26.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
+
+                    if (s == "send" && !connected) {
+                        if (searching) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                PulseRings()
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                        Button(
+                            onClick = { startScan() },
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(58.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.QrCodeScanner,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("امسح الكود", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = { showManual = !showManual },
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Keyboard,
+                                contentDescription = null,
+                                tint = Ink,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("إدخال الكود يدوياً", color = Ink, fontWeight = FontWeight.Bold)
+                        }
+                        AnimatedVisibility(visible = showManual) {
+                            Column {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                OutlinedTextField(
+                                    value = manualCode,
+                                    onValueChange = { input ->
+                                        manualCode = input.uppercase()
+                                            .filter { it.isLetterOrDigit() }
+                                            .take(8)
+                                    },
+                                    label = { Text("الكود (8 حروف وأرقام)") },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(18.dp),
+                                    keyboardOptions = KeyboardOptions(
+                                        capitalization = KeyboardCapitalization.Characters
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = { connectManual() },
+                                    shape = RoundedCornerShape(20.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp)
+                                ) {
+                                    Text("اتصل", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
+
+                    AnimatedVisibility(
+                        visible = connected,
+                        enter = fadeIn(tween(400)) + slideInVertically(tween(400)) { it / 3 }
                     ) {
-                        Text("اتصل")
+                        Column {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(Ink)
+                                    .padding(20.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.CheckCircle,
+                                    contentDescription = null,
+                                    tint = Yellow,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "تم الاتصال بالجهاز التاني",
+                                    color = Yellow,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            if (s == "send") {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(
+                                    onClick = { filePicker.launch(arrayOf("*/*")) },
+                                    shape = RoundedCornerShape(20.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(58.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.FileUpload,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        "اختار ملفات وابعت",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                    }
+
+                    transfers.forEach { item ->
+                        TransferRow(item)
+                        Spacer(modifier = Modifier.height(10.dp))
                     }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            if (screen == "send" && connected) {
-                Button(
-                    onClick = { filePicker.launch(arrayOf("*/*")) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
-                ) {
-                    Text("اختار ملفات وابعت")
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(transfers, key = { it.id }) { item ->
-                    TransferRow(item)
-                }
-            }
-
-            TextButton(onClick = { goHome() }) {
-                Text("رجوع")
             }
         }
     }
 }
 
 @Composable
-private fun ActionCard(
-    emoji: String,
+private fun AppHeader() {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val scale by animateFloatAsState(
+        targetValue = if (shown) 1f else 0.5f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Image(
+            painter = painterResource(R.drawable.ic_logo),
+            contentDescription = null,
+            modifier = Modifier
+                .size(64.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+        )
+        Spacer(modifier = Modifier.width(14.dp))
+        Column {
+            Text(
+                text = "Frotta",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                color = Ink
+            )
+            Text(
+                text = "أبو عمر الخيامي سوفت وير",
+                fontSize = 14.sp,
+                color = Ink
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppearIn(delayMs: Long, content: @Composable () -> Unit) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(delayMs)
+        visible = true
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(450)) + slideInVertically(tween(450)) { it / 4 }
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun BigCard(
+    icon: ImageVector,
     title: String,
     subtitle: String,
     onClick: () -> Unit
 ) {
-    Card(
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+    )
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = emoji, fontSize = 36.sp)
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(verticalArrangement = Arrangement.Center) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
             }
+            .clip(RoundedCornerShape(28.dp))
+            .background(Ink)
+            .clickable(interactionSource = source, indication = null, onClick = onClick)
+            .padding(22.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(62.dp)
+                .clip(CircleShape)
+                .background(Yellow),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Ink,
+                modifier = Modifier.size(32.dp)
+            )
         }
+        Spacer(modifier = Modifier.width(16.dp))
+        Column {
+            Text(
+                text = title,
+                color = Yellow,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = subtitle,
+                color = SoftYellow,
+                fontSize = 13.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun PulseRings() {
+    val transition = rememberInfiniteTransition()
+    val p by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        )
+    )
+    Canvas(modifier = Modifier.size(170.dp)) {
+        val maxR = size.minDimension / 2
+        for (i in 0..2) {
+            val f = (p + i / 3f) % 1f
+            drawCircle(
+                color = Ink.copy(alpha = (1f - f) * 0.6f),
+                radius = maxR * f,
+                style = Stroke(width = 5f)
+            )
+        }
+        drawCircle(color = Ink, radius = maxR * 0.2f)
     }
 }
 
 @Composable
 private fun TransferRow(item: TransferItem) {
+    val fraction = if (item.total > 0) {
+        (item.transferred.toFloat() / item.total.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+    val animated by animateFloatAsState(
+        targetValue = if (item.done) 1f else fraction,
+        animationSpec = tween(300)
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(SoftYellow)
+            .padding(16.dp)
     ) {
-        Text(
-            text = (if (item.sending) "📤 " else "📥 ") + item.name,
-            maxLines = 1,
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Spacer(modifier = Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = if (item.sending) Icons.Rounded.FileUpload else Icons.Rounded.FileDownload,
+                contentDescription = null,
+                tint = Ink,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = item.name,
+                maxLines = 1,
+                color = Ink,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
         when {
-            item.failed -> Text(
-                text = "فشل النقل",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
-            item.done -> Text(
-                text = "تم ✅  " + formatSize(item.total),
-                style = MaterialTheme.typography.bodySmall
-            )
-            else -> {
-                val fraction = if (item.total > 0) {
-                    (item.transferred.toFloat() / item.total.toFloat()).coerceIn(0f, 1f)
-                } else 0f
-                LinearProgressIndicator(
-                    progress = fraction,
-                    modifier = Modifier.fillMaxWidth()
+            item.failed -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.Error,
+                    contentDescription = null,
+                    tint = Color(0xFFB3261E),
+                    modifier = Modifier.size(18.dp)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "فشل النقل",
+                    color = Color(0xFFB3261E),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            item.done -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.CheckCircle,
+                    contentDescription = null,
+                    tint = Ink,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "تم  " + formatSize(item.total),
+                    color = Ink,
+                    fontSize = 13.sp
+                )
+            }
+            else -> {
+                LinearProgressIndicator(
+                    progress = animated,
+                    color = Ink,
+                    trackColor = Yellow,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                )
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = "${(fraction * 100).toInt()}%   " +
                         formatSize(item.transferred) + " / " + formatSize(item.total),
-                    style = MaterialTheme.typography.bodySmall
+                    color = Ink,
+                    fontSize = 12.sp
                 )
             }
         }
