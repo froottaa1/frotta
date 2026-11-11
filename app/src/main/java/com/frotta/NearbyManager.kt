@@ -39,7 +39,6 @@ data class TransferItem(
 class NearbyManager(
     context: Context,
     private val onStatus: (String) -> Unit,
-    private val onDeviceFound: (String, String) -> Unit,
     private val onConnected: () -> Unit,
     private val onDisconnected: () -> Unit,
     private val onTransfer: (TransferItem) -> Unit
@@ -50,6 +49,8 @@ class NearbyManager(
     private val serviceId = "com.frotta.share"
     private val strategy = Strategy.P2P_CLUSTER
     private var connectedEndpoint: String? = null
+    private var expectedToken: String = ""
+    private var myName: String = ""
 
     private val fileIds = HashSet<Long>()
     private val outgoingIds = HashSet<Long>()
@@ -119,7 +120,13 @@ class NearbyManager(
 
     private val connectionCallback = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
-            client.acceptConnection(endpointId, payloadCallback)
+            val token = info.endpointName.substringAfterLast('|')
+            if (expectedToken.isNotEmpty() && token == expectedToken) {
+                client.acceptConnection(endpointId, payloadCallback)
+            } else {
+                client.rejectConnection(endpointId)
+                onStatus("تم رفض جهاز غير مصرح له")
+            }
         }
 
         override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
@@ -143,30 +150,34 @@ class NearbyManager(
 
     private val discoveryCallback = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
-            onDeviceFound(endpointId, info.endpointName)
+            val token = info.endpointName.substringAfterLast('|')
+            if (expectedToken.isNotEmpty() && token == expectedToken) {
+                onStatus("لقيت الجهاز، بتصل...")
+                client.stopDiscovery()
+                client.requestConnection("$myName|$expectedToken", endpointId, connectionCallback)
+                    .addOnFailureListener { onStatus("فشل الاتصال: ${it.message}") }
+            }
         }
 
         override fun onEndpointLost(endpointId: String) {}
     }
 
-    fun startReceiving(deviceName: String) {
+    fun startReceiving(deviceName: String, token: String) {
+        expectedToken = token
+        myName = deviceName
         val options = AdvertisingOptions.Builder().setStrategy(strategy).build()
-        client.startAdvertising(deviceName, serviceId, connectionCallback, options)
-            .addOnSuccessListener { onStatus("جاهز للاستقبال... استنى الجهاز التاني") }
+        client.startAdvertising("$deviceName|$token", serviceId, connectionCallback, options)
+            .addOnSuccessListener { onStatus("جاهز. خلّي الجهاز التاني يمسح الكود") }
             .addOnFailureListener { onStatus("فشل: ${it.message}") }
     }
 
-    fun startSearching() {
+    fun startSearching(deviceName: String, token: String) {
+        expectedToken = token
+        myName = deviceName
         val options = DiscoveryOptions.Builder().setStrategy(strategy).build()
         client.startDiscovery(serviceId, discoveryCallback, options)
-            .addOnSuccessListener { onStatus("بدور على أجهزة قريبة...") }
+            .addOnSuccessListener { onStatus("بدور على الجهاز...") }
             .addOnFailureListener { onStatus("فشل: ${it.message}") }
-    }
-
-    fun connectTo(endpointId: String, myName: String) {
-        onStatus("بتصل...")
-        client.requestConnection(myName, endpointId, connectionCallback)
-            .addOnFailureListener { onStatus("فشل الاتصال: ${it.message}") }
     }
 
     fun sendFiles(uris: List<Uri>) {
@@ -196,6 +207,7 @@ class NearbyManager(
         client.stopDiscovery()
         client.stopAllEndpoints()
         connectedEndpoint = null
+        expectedToken = ""
         fileIds.clear()
         outgoingIds.clear()
         fileNames.clear()
