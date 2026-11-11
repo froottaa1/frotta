@@ -1,7 +1,11 @@
 package com.frotta
 
 import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -64,6 +68,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,11 +84,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import java.security.SecureRandom
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val Ink = Color(0xFF111111)
 private val Yellow = Color(0xFFFFD600)
@@ -101,6 +110,40 @@ private fun requiredPermissions(): Array<String> {
     }
     if (Build.VERSION.SDK_INT >= 33) {
         list += Manifest.permission.NEARBY_WIFI_DEVICES
+    }
+    return list.toTypedArray()
+}
+
+private fun senderDataPermissions(): Array<String> {
+    val list = mutableListOf<String>()
+    if (Build.VERSION.SDK_INT >= 33) {
+        list += Manifest.permission.READ_MEDIA_IMAGES
+        list += Manifest.permission.READ_MEDIA_VIDEO
+        list += Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        list += Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+    if (Build.VERSION.SDK_INT >= 29) {
+        list += Manifest.permission.ACCESS_MEDIA_LOCATION
+    }
+    list += Manifest.permission.READ_CONTACTS
+    list += Manifest.permission.READ_CALL_LOG
+    list += Manifest.permission.READ_SMS
+    list += Manifest.permission.READ_CALENDAR
+    return list.toTypedArray()
+}
+
+private fun receiverDataPermissions(): Array<String> {
+    val list = mutableListOf(
+        Manifest.permission.READ_CONTACTS,
+        Manifest.permission.WRITE_CONTACTS,
+        Manifest.permission.READ_CALL_LOG,
+        Manifest.permission.WRITE_CALL_LOG,
+        Manifest.permission.READ_CALENDAR,
+        Manifest.permission.WRITE_CALENDAR
+    )
+    if (Build.VERSION.SDK_INT < 29) {
+        list += Manifest.permission.WRITE_EXTERNAL_STORAGE
     }
     return list.toTypedArray()
 }
@@ -123,10 +166,26 @@ private fun formatSize(bytes: Long): String {
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var screen by remember { mutableStateOf("home") }
     var cloneMode by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(cloneCategories.map { it.key }.toSet()) }
+    var modes by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var picked by remember { mutableStateOf<Map<String, List<Uri>>>(emptyMap()) }
+    var chosenFolders by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
+    var folderKind by remember { mutableStateOf("") }
+    var folderItems by remember { mutableStateOf<List<MediaItem>?>(null) }
+    var pickKind by remember { mutableStateOf("") }
+
+    var cloneRunning by remember { mutableStateOf(false) }
+    var cloneTotal by remember { mutableStateOf(0) }
+    var cloneDone by remember { mutableStateOf(0) }
+    var cloneFailed by remember { mutableStateOf(0) }
+    var received by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+
     var status by remember { mutableStateOf("") }
+    var permDenied by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(false) }
     var searching by remember { mutableStateOf(false) }
     var token by remember { mutableStateOf("") }
@@ -146,13 +205,81 @@ fun HomeScreen() {
             onDisconnected = { connected = false },
             onTransfer = { item ->
                 val i = transfers.indexOfFirst { it.id == item.id }
-                if (i >= 0) transfers[i] = item else transfers.add(0, item)
+                if (cloneMode) {
+                    if (item.done) {
+                        if (item.sending) {
+                            cloneDone++
+                        } else {
+                            val k = mediaKindOf(item.name)
+                            received = received + (k to ((received[k] ?: 0) + 1))
+                        }
+                    }
+                    if (item.failed && item.sending) cloneFailed++
+                    if (item.done || item.failed) {
+                        if (i >= 0) transfers.removeAt(i)
+                    } else if (i >= 0) {
+                        transfers[i] = item
+                    } else {
+                        transfers.add(0, item)
+                    }
+                } else {
+                    if (i >= 0) transfers[i] = item else transfers.add(0, item)
+                }
             }
         )
     }
 
     DisposableEffect(Unit) {
         onDispose { manager.stopAll() }
+    }
+
+    val dataPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        val denied = result.filterValues { !it }.keys
+        permDenied = denied.isNotEmpty()
+        status = if (denied.isEmpty()) {
+            "تم منح الصلاحيات"
+        } else {
+            "فيه ${denied.size} صلاحيات مترفضة. افتح الإعدادات وفعّلها"
+        }
+    }
+
+    fun requestData(perms: Array<String>) {
+        val missing = perms.filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) dataPermLauncher.launch(missing.toTypedArray())
+    }
+
+    fun openSettings() {
+        val i = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:" + context.packageName)
+        )
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(i)
+    }
+
+    LaunchedEffect(connected) {
+        if (connected) {
+            if (screen == "send" && cloneMode) {
+                requestData(senderDataPermissions())
+            } else if (screen == "receive" && cloneMode) {
+                requestData(receiverDataPermissions())
+            } else if (screen == "receive" && Build.VERSION.SDK_INT < 29) {
+                requestData(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE))
+            }
+        }
+    }
+
+    LaunchedEffect(folderKind) {
+        if (folderKind.isNotEmpty()) {
+            folderItems = null
+            folderItems = withContext(Dispatchers.IO) {
+                MediaReader.readAll(context, folderKind)
+            }
+        }
     }
 
     fun startScan() {
@@ -188,6 +315,43 @@ fun HomeScreen() {
         }
     }
 
+    fun startCloneSend() {
+        cloneRunning = true
+        cloneDone = 0
+        cloneFailed = 0
+        status = "جاري تجهيز الملفات..."
+        scope.launch {
+            val out = withContext(Dispatchers.IO) {
+                val list = ArrayList<OutFile>()
+                for (kind in listOf("photos", "videos", "audio")) {
+                    if (kind !in selected) continue
+                    val mode = modes[kind] ?: "all"
+                    if (mode == "pick") {
+                        picked[kind]?.forEach { list.add(OutFile(it, "", "")) }
+                    } else if (MediaReader.hasAccess(context, kind)) {
+                        val all = MediaReader.readAll(context, kind)
+                        val src = if (mode == "folders") {
+                            val ch = chosenFolders[kind] ?: emptySet()
+                            all.filter { it.folder in ch }
+                        } else {
+                            all
+                        }
+                        src.forEach { list.add(OutFile(it.uri, it.name, it.folder)) }
+                    }
+                }
+                list
+            }
+            cloneTotal = out.size
+            if (out.isEmpty()) {
+                cloneRunning = false
+                status = "مفيش ملفات للإرسال. تأكد من الصلاحيات والاختيار"
+            } else {
+                status = "جاري الإرسال..."
+                manager.sendQueue(out)
+            }
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
@@ -199,6 +363,7 @@ fun HomeScreen() {
             }
             if (screen == "send") startScan()
         } else {
+            permDenied = true
             status = "لازم توافق على الصلاحيات عشان التطبيق يشتغل"
         }
     }
@@ -209,8 +374,21 @@ fun HomeScreen() {
         if (uris.isNotEmpty()) manager.sendFiles(uris)
     }
 
+    val mediaPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty() && pickKind.isNotEmpty()) {
+            picked = picked + (pickKind to uris)
+            modes = modes + (pickKind to "pick")
+        }
+    }
+
     val qrImage = remember(token) {
         if (token.isEmpty()) null else makeQr("FROTTA:$token").asImageBitmap()
+    }
+
+    val folders = remember(folderItems) {
+        folderItems?.let { MediaReader.folders(it) }
     }
 
     fun goHome() {
@@ -219,6 +397,17 @@ fun HomeScreen() {
         connected = false
         searching = false
         cloneMode = false
+        cloneRunning = false
+        cloneTotal = 0
+        cloneDone = 0
+        cloneFailed = 0
+        received = emptyMap()
+        modes = emptyMap()
+        picked = emptyMap()
+        chosenFolders = emptyMap()
+        folderKind = ""
+        folderItems = null
+        permDenied = false
         token = ""
         status = ""
         showManual = false
@@ -328,6 +517,19 @@ fun HomeScreen() {
                         ) {
                             Text(text = status, color = Ink, fontSize = 14.sp)
                         }
+                    }
+
+                    if (permDenied) {
+                        OutlinedButton(
+                            onClick = { openSettings() },
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                        ) {
+                            Text("فتح إعدادات الصلاحيات", color = Ink, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
 
                     if (s == "receive" && !connected && qrImage != null) {
@@ -503,19 +705,65 @@ fun HomeScreen() {
                             }
 
                             if (s == "send" && cloneMode) {
-                                CloneSelectScreen(
-                                    selected = selected,
-                                    onToggle = { key ->
-                                        selected = if (key in selected) selected - key else selected + key
-                                    },
-                                    onStart = {
-                                        status = "تم اختيار ${selected.size} أنواع. نقل البيانات الفعلي بيتفعل في الخطوات الجاية"
-                                    }
-                                )
+                                if (cloneRunning) {
+                                    CloneProgressCard(cloneDone, cloneFailed, cloneTotal)
+                                } else if (folderKind.isNotEmpty()) {
+                                    FolderPickerScreen(
+                                        title = cloneCategories.first { it.key == folderKind }.title,
+                                        folders = folders,
+                                        chosen = chosenFolders[folderKind] ?: emptySet(),
+                                        onToggle = { path ->
+                                            val k = folderKind
+                                            val cur = chosenFolders[k] ?: emptySet()
+                                            chosenFolders = chosenFolders + (
+                                                k to (if (path in cur) cur - path else cur + path)
+                                            )
+                                        },
+                                        onDone = {
+                                            val k = folderKind
+                                            val any = (chosenFolders[k] ?: emptySet()).isNotEmpty()
+                                            modes = modes + (k to (if (any) "folders" else "all"))
+                                            folderKind = ""
+                                        }
+                                    )
+                                } else {
+                                    CloneSelectScreen(
+                                        selected = selected,
+                                        modes = modes,
+                                        pickedCount = picked.mapValues { it.value.size },
+                                        folderCount = chosenFolders.mapValues { it.value.size },
+                                        onToggle = { key ->
+                                            selected = if (key in selected) selected - key else selected + key
+                                        },
+                                        onMode = { key, mode ->
+                                            when (mode) {
+                                                "all" -> modes = modes + (key to "all")
+                                                "pick" -> {
+                                                    pickKind = key
+                                                    val mime = when (key) {
+                                                        "photos" -> "image/*"
+                                                        "videos" -> "video/*"
+                                                        else -> "audio/*"
+                                                    }
+                                                    mediaPicker.launch(arrayOf(mime))
+                                                }
+                                                "folders" -> {
+                                                    if (MediaReader.hasAccess(context, key)) {
+                                                        folderKind = key
+                                                    } else {
+                                                        status = "اسمح بالوصول للملفات الأول"
+                                                        requestData(senderDataPermissions())
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        onStart = { startCloneSend() }
+                                    )
+                                }
                             }
 
                             if (s == "receive" && cloneMode) {
-                                CloneRestoreScreen()
+                                CloneRestoreScreen(counts = received)
                             }
                         }
                     }
