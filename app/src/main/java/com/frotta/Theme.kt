@@ -1,36 +1,28 @@
 package com.frotta
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF1565C0),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFD6E4FF),
-    onPrimaryContainer = Color(0xFF001B3E),
-    background = Color(0xFFF8FAFF),
-    onBackground = Color(0xFF1A1C1E),
-    surface = Color(0xFFF8FAFF),
-    onSurface = Color(0xFF1A1C1E)
-)
-
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFF9ECAFF),
-    onPrimary = Color(0xFF003063),
-    primaryContainer = Color(0xFF00468C),
-    onPrimaryContainer = Color(0xFFD6E4FF),
-    background = Color(0xFF101418),
-    onBackground = Color(0xFFE2E2E6),
-    surface = Color(0xFF101418),
-    onSurface = Color(0xFFE2E2E6)
+private val YellowColors = lightColorScheme(
+    primary = Color(0xFF111111),
+    onPrimary = Color(0xFFFFD600),
+    primaryContainer = Color(0xFFFFF3B0),
+    onPrimaryContainer = Color(0xFF111111),
+    secondary = Color(0xFF111111),
+    onSecondary = Color(0xFFFFD600),
+    background = Color(0xFFFFD600),
+    onBackground = Color(0xFF111111),
+    surface = Color(0xFFFFD600),
+    onSurface = Color(0xFF111111),
+    surfaceVariant = Color(0xFFFFE866),
+    onSurfaceVariant = Color(0xFF111111),
+    outline = Color(0xFF111111),
+    error = Color(0xFFB3261E)
 )
 
 @Composable
 fun FrottaTheme(content: @Composable () -> Unit) {
-    val colors = if (isSystemInDarkTheme()) DarkColors else LightColors
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialTheme(colorScheme = YellowColors, content = content)
 }
