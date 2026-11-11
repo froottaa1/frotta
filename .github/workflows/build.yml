@@ -27,6 +27,12 @@ jobs:
     - name: Create local.properties
       run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
+    - name: Download fonts
+      run: |
+        mkdir -p app/src/main/res/font
+        wget -q -O app/src/main/res/font/tajawal_regular.ttf https://raw.githubusercontent.com/google/fonts/main/ofl/tajawal/Tajawal-Regular.ttf
+        wget -q -O app/src/main/res/font/tajawal_bold.ttf https://raw.githubusercontent.com/google/fonts/main/ofl/tajawal/Tajawal-Bold.ttf
+
     - name: Force Install Gradle 8.5
       run: |
         wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
