@@ -42,11 +42,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -121,6 +124,8 @@ private fun formatSize(bytes: Long): String {
 fun HomeScreen() {
     val context = LocalContext.current
     var screen by remember { mutableStateOf("home") }
+    var cloneMode by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(cloneCategories.map { it.key }.toSet()) }
     var status by remember { mutableStateOf("") }
     var connected by remember { mutableStateOf(false) }
     var searching by remember { mutableStateOf(false) }
@@ -213,6 +218,7 @@ fun HomeScreen() {
         transfers.clear()
         connected = false
         searching = false
+        cloneMode = false
         token = ""
         status = ""
         showManual = false
@@ -256,6 +262,7 @@ fun HomeScreen() {
                 if (s == "home") {
                     AppearIn(150) {
                         BigCard(Icons.Rounded.FileUpload, "إرسال", "امسح الكود أو اكتبه يدوياً") {
+                            cloneMode = false
                             screen = "send"
                             permissionLauncher.launch(requiredPermissions())
                         }
@@ -263,13 +270,47 @@ fun HomeScreen() {
                     Spacer(modifier = Modifier.height(16.dp))
                     AppearIn(300) {
                         BigCard(Icons.Rounded.FileDownload, "استقبال", "اعرض كود عشان الجهاز التاني يتصل") {
+                            cloneMode = false
                             screen = "receive"
                             permissionLauncher.launch(requiredPermissions())
                         }
                     }
-                } else {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    AppearIn(450) {
+                        BigCard(Icons.Rounded.ContentCopy, "استنساخ", "انقل كل بيانات الهاتف القديم للجديد") {
+                            screen = "cloneRole"
+                        }
+                    }
+                } else if (s == "cloneRole") {
                     Text(
-                        text = if (s == "send") "إرسال" else "استقبال",
+                        text = "استنساخ",
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Ink
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(text = "الهاتف ده هو...", fontSize = 14.sp, color = Ink)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    BigCard(Icons.Rounded.PhoneAndroid, "الهاتف القديم", "هبعت منه البيانات") {
+                        cloneMode = true
+                        screen = "send"
+                        permissionLauncher.launch(requiredPermissions())
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    BigCard(Icons.Rounded.Restore, "الهاتف الجديد", "هسترد عليه البيانات") {
+                        cloneMode = true
+                        screen = "receive"
+                        permissionLauncher.launch(requiredPermissions())
+                    }
+                } else {
+                    val title = when {
+                        cloneMode && s == "send" -> "استنساخ: الهاتف القديم"
+                        cloneMode -> "استنساخ: الهاتف الجديد"
+                        s == "send" -> "إرسال"
+                        else -> "استقبال"
+                    }
+                    Text(
+                        text = title,
                         fontSize = 26.sp,
                         fontWeight = FontWeight.Bold,
                         color = Ink
@@ -436,8 +477,9 @@ fun HomeScreen() {
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                            if (s == "send") {
-                                Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            if (s == "send" && !cloneMode) {
                                 Button(
                                     onClick = { filePicker.launch(arrayOf("*/*")) },
                                     shape = RoundedCornerShape(20.dp),
@@ -457,8 +499,24 @@ fun HomeScreen() {
                                         fontSize = 16.sp
                                     )
                                 }
+                                Spacer(modifier = Modifier.height(16.dp))
                             }
-                            Spacer(modifier = Modifier.height(16.dp))
+
+                            if (s == "send" && cloneMode) {
+                                CloneSelectScreen(
+                                    selected = selected,
+                                    onToggle = { key ->
+                                        selected = if (key in selected) selected - key else selected + key
+                                    },
+                                    onStart = {
+                                        status = "تم اختيار ${selected.size} أنواع. نقل البيانات الفعلي بيتفعل في الخطوات الجاية"
+                                    }
+                                )
+                            }
+
+                            if (s == "receive" && cloneMode) {
+                                CloneRestoreScreen()
+                            }
                         }
                     }
 
