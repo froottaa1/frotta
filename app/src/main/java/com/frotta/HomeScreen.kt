@@ -39,7 +39,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 private fun requiredPermissions(): Array<String> {
-    val list = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    val list = mutableListOf(
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION
+    )
     if (Build.VERSION.SDK_INT >= 31) {
         list += Manifest.permission.BLUETOOTH_ADVERTISE
         list += Manifest.permission.BLUETOOTH_CONNECT
