@@ -5,7 +5,9 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,7 +24,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,10 +35,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import java.security.SecureRandom
 
 private fun requiredPermissions(): Array<String> {
     val list = mutableListOf(
@@ -54,6 +63,12 @@ private fun requiredPermissions(): Array<String> {
     return list.toTypedArray()
 }
 
+private fun newToken(): String {
+    val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    val random = SecureRandom()
+    return (1..8).map { chars[random.nextInt(chars.length)] }.joinToString("")
+}
+
 private fun formatSize(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"
     val kb = bytes / 1024.0
@@ -69,7 +84,7 @@ fun HomeScreen() {
     var screen by remember { mutableStateOf("home") }
     var status by remember { mutableStateOf("") }
     var connected by remember { mutableStateOf(false) }
-    val devices = remember { mutableStateListOf<Pair<String, String>>() }
+    var token by remember { mutableStateOf("") }
     val transfers = remember { mutableStateListOf<TransferItem>() }
     val myName = remember { Build.MODEL }
 
@@ -77,9 +92,6 @@ fun HomeScreen() {
         NearbyManager(
             context = context,
             onStatus = { status = it },
-            onDeviceFound = { id, name ->
-                if (devices.none { it.first == id }) devices.add(id to name)
-            },
             onConnected = { connected = true },
             onDisconnected = { connected = false },
             onTransfer = { item ->
@@ -93,12 +105,33 @@ fun HomeScreen() {
         onDispose { manager.stopAll() }
     }
 
+    fun startScan() {
+        val options = GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .build()
+        GmsBarcodeScanning.getClient(context, options).startScan()
+            .addOnSuccessListener { barcode ->
+                val raw = barcode.rawValue ?: ""
+                if (raw.startsWith("FROTTA:")) {
+                    manager.startSearching(myName, raw.removePrefix("FROTTA:"))
+                } else {
+                    status = "الكود ده مش تابع لتطبيق Frotta"
+                }
+            }
+            .addOnCanceledListener { status = "تم إلغاء المسح" }
+            .addOnFailureListener { status = "تعذر فتح الماسح: ${it.message}" }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
         if (result.values.all { it }) {
-            if (screen == "receive") manager.startReceiving(myName)
-            if (screen == "send") manager.startSearching()
+            if (screen == "receive") {
+                val t = newToken()
+                token = t
+                manager.startReceiving(myName, t)
+            }
+            if (screen == "send") startScan()
         } else {
             status = "لازم توافق على الصلاحيات عشان التطبيق يشتغل"
         }
@@ -110,11 +143,15 @@ fun HomeScreen() {
         if (uris.isNotEmpty()) manager.sendFiles(uris)
     }
 
+    val qrImage = remember(token) {
+        if (token.isEmpty()) null else makeQr("FROTTA:$token").asImageBitmap()
+    }
+
     fun goHome() {
         manager.stopAll()
-        devices.clear()
         transfers.clear()
         connected = false
+        token = ""
         status = ""
         screen = "home"
     }
@@ -127,25 +164,34 @@ fun HomeScreen() {
             .padding(20.dp)
     ) {
         Spacer(modifier = Modifier.height(24.dp))
-        Text(
-            text = "Frotta",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(
-            text = "انقل ملفاتك بدون إنترنت",
-            style = MaterialTheme.typography.bodyLarge
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Image(
+                painter = painterResource(R.drawable.ic_logo),
+                contentDescription = null,
+                modifier = Modifier.size(56.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = "Frotta",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "انقل بياناتك بدون إنترنت",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+        }
         Spacer(modifier = Modifier.height(32.dp))
 
         if (screen == "home") {
-            ActionCard("📤", "إرسال", "ابعت ملفات لجهاز قريب") {
+            ActionCard("📤", "إرسال", "امسح كود الجهاز المستقبِل") {
                 screen = "send"
                 permissionLauncher.launch(requiredPermissions())
             }
             Spacer(modifier = Modifier.height(16.dp))
-            ActionCard("📥", "استقبال", "خلّي جهازك جاهز لاستلام الملفات") {
+            ActionCard("📥", "استقبال", "اعرض كود عشان الجهاز التاني يمسحه") {
                 screen = "receive"
                 permissionLauncher.launch(requiredPermissions())
             }
@@ -161,16 +207,32 @@ fun HomeScreen() {
             }
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (screen == "send" && !connected) {
-                devices.forEach { (id, name) ->
-                    OutlinedButton(
-                        onClick = { manager.connectTo(id, myName) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("📱 $name")
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
+            if (screen == "receive" && !connected && qrImage != null) {
+                Card(
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Image(
+                        bitmap = qrImage,
+                        contentDescription = "QR",
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .size(240.dp)
+                    )
                 }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            if (screen == "send" && !connected) {
+                Button(
+                    onClick = { startScan() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                ) {
+                    Text("امسح الكود")
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
 
             if (screen == "send" && connected) {
@@ -219,7 +281,7 @@ private fun ActionCard(
         ) {
             Text(text = emoji, fontSize = 36.sp)
             Spacer(modifier = Modifier.width(16.dp))
-            Column {
+            Column(verticalArrangement = Arrangement.Center) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
