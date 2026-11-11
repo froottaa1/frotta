@@ -19,11 +19,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +43,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -85,6 +89,8 @@ fun HomeScreen() {
     var status by remember { mutableStateOf("") }
     var connected by remember { mutableStateOf(false) }
     var token by remember { mutableStateOf("") }
+    var showManual by remember { mutableStateOf(false) }
+    var manualCode by remember { mutableStateOf("") }
     val transfers = remember { mutableStateListOf<TransferItem>() }
     val myName = remember { Build.MODEL }
 
@@ -118,8 +124,22 @@ fun HomeScreen() {
                     status = "الكود ده مش تابع لتطبيق Frotta"
                 }
             }
-            .addOnCanceledListener { status = "تم إلغاء المسح" }
-            .addOnFailureListener { status = "تعذر فتح الماسح: ${it.message}" }
+            .addOnCanceledListener {
+                status = "تم إلغاء المسح. تقدر تدخل الكود يدوياً"
+            }
+            .addOnFailureListener {
+                status = "الكاميرا مش شغالة؟ استخدم الإدخال اليدوي"
+                showManual = true
+            }
+    }
+
+    fun connectManual() {
+        val code = manualCode.trim()
+        if (code.length != 8) {
+            status = "الكود لازم يكون 8 حروف وأرقام"
+        } else {
+            manager.startSearching(myName, code)
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -153,6 +173,8 @@ fun HomeScreen() {
         connected = false
         token = ""
         status = ""
+        showManual = false
+        manualCode = ""
         screen = "home"
     }
 
@@ -178,7 +200,7 @@ fun HomeScreen() {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "انقل بياناتك بدون إنترنت",
+                    text = "أبو عمر الخيامي سوفت وير",
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
@@ -186,12 +208,12 @@ fun HomeScreen() {
         Spacer(modifier = Modifier.height(32.dp))
 
         if (screen == "home") {
-            ActionCard("📤", "إرسال", "امسح كود الجهاز المستقبِل") {
+            ActionCard("📤", "إرسال", "امسح الكود أو اكتبه يدوياً") {
                 screen = "send"
                 permissionLauncher.launch(requiredPermissions())
             }
             Spacer(modifier = Modifier.height(16.dp))
-            ActionCard("📥", "استقبال", "اعرض كود عشان الجهاز التاني يمسحه") {
+            ActionCard("📥", "استقبال", "اعرض كود عشان الجهاز التاني يتصل") {
                 screen = "receive"
                 permissionLauncher.launch(requiredPermissions())
             }
@@ -220,6 +242,18 @@ fun HomeScreen() {
                             .size(240.dp)
                     )
                 }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "أو اكتب الكود ده في الجهاز التاني:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+                Text(
+                    text = token.chunked(4).joinToString("  "),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
@@ -231,6 +265,41 @@ fun HomeScreen() {
                         .height(56.dp)
                 ) {
                     Text("امسح الكود")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { showManual = !showManual },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Text("إدخال الكود يدوياً")
+                }
+                if (showManual) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = manualCode,
+                        onValueChange = { input ->
+                            manualCode = input.uppercase()
+                                .filter { it.isLetterOrDigit() }
+                                .take(8)
+                        },
+                        label = { Text("الكود (8 حروف وأرقام)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Characters
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = { connectManual() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                    ) {
+                        Text("اتصل")
+                    }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
