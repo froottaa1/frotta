@@ -207,6 +207,7 @@ fun HomeScreen() {
     var selected by remember { mutableStateOf(cloneCategories.map { it.key }.toSet()) }
     var modes by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var pickedItems by remember { mutableStateOf<Map<String, List<MediaItem>>>(emptyMap()) }
+    var docExtras by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var chosenFolders by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
     var folderKind by remember { mutableStateOf("") }
     var folderItems by remember { mutableStateOf<List<MediaItem>?>(null) }
@@ -355,7 +356,7 @@ fun HomeScreen() {
                     if (item.sending) {
                         doneCount++
                     } else if (!item.skipped) {
-                        val k = mediaKindOf(item.name)
+                        val k = if (item.isDoc) "docs" else mediaKindOf(item.name)
                         if (k != "data" && !item.isApp) {
                             received = received + (k to ((received[k] ?: 0) + 1))
                         }
@@ -573,11 +574,15 @@ fun HomeScreen() {
     }
 
     fun confirmKindPick() {
-        val kind = pickTab
-        val chosen = (lists[kind] ?: emptyList()).filter { it.uri.toString() in sel }
+        val tab = pickTab
+        val kind = if (tab == "other") "docs" else tab
+        val chosen = (lists[tab] ?: emptyList()).filter { it.uri.toString() in sel }
         pickedItems = pickedItems + (kind to chosen)
-        modes = modes + (kind to (if (chosen.isEmpty()) "all" else "pick"))
+        if (kind == "docs") docExtras = extraUris
+        val hasAny = chosen.isNotEmpty() || (kind == "docs" && extraUris.isNotEmpty())
+        modes = modes + (kind to (if (hasAny) "pick" else "all"))
         sel = emptySet()
+        extraUris = emptyList()
         sendStage = "cloneSelect"
     }
 
@@ -630,6 +635,37 @@ fun HomeScreen() {
                         } else {
                             skipped.add("التطبيقات")
                         }
+                    }
+                }
+
+                if ("docs" in selected) {
+                    val mode = modes["docs"] ?: "all"
+                    val docs = ArrayList<OutFile>()
+                    if (mode == "pick") {
+                        pickedItems["docs"]?.forEach {
+                            docs.add(
+                                OutFile(it.uri, it.name, "__frotta_docs/" + it.folder, it.modified)
+                            )
+                        }
+                        docExtras.forEach { docs.add(OutFile(it, "", "")) }
+                    } else {
+                        val all = DocsReader.readDocs(context, true)
+                        val src = if (mode == "folders") {
+                            val ch = chosenFolders["docs"] ?: emptySet()
+                            all.filter { it.folder in ch }
+                        } else {
+                            all
+                        }
+                        src.forEach {
+                            docs.add(
+                                OutFile(it.uri, it.name, "__frotta_docs/" + it.folder, it.modified)
+                            )
+                        }
+                    }
+                    if (docs.isEmpty()) {
+                        skipped.add("المستندات (فعّل الوصول لكل الملفات)")
+                    } else {
+                        list.addAll(docs)
                     }
                 }
 
@@ -694,6 +730,7 @@ fun HomeScreen() {
         installing = null
         modes = emptyMap()
         pickedItems = emptyMap()
+        docExtras = emptyList()
         chosenFolders = emptyMap()
         folderKind = ""
         folderItems = null
@@ -718,6 +755,7 @@ fun HomeScreen() {
             sendStage = "connect"
         } else if (screen == "send" && sendStage == "cloneKindPick") {
             sel = emptySet()
+            extraUris = emptyList()
             sendStage = "cloneSelect"
         } else if (screen == "send" && sendStage == "connect" && !connected) {
             manager.stopAll()
@@ -816,7 +854,11 @@ fun HomeScreen() {
         if (folderKind.isNotEmpty()) {
             folderItems = null
             folderItems = withContext(Dispatchers.IO) {
-                MediaReader.readAll(context, folderKind)
+                if (folderKind == "docs") {
+                    DocsReader.readDocs(context, true)
+                } else {
+                    MediaReader.readAll(context, folderKind)
+                }
             }
         }
     }
@@ -877,7 +919,11 @@ fun HomeScreen() {
         }
         PickerScreen(
             title = if (isKindPick) {
-                allPickerTabs.firstOrNull { it.key == pickTab }?.title ?: ""
+                if (pickTab == "other") {
+                    "المستندات"
+                } else {
+                    allPickerTabs.firstOrNull { it.key == pickTab }?.title ?: ""
+                }
             } else {
                 "اختيار الملفات"
             },
@@ -887,7 +933,11 @@ fun HomeScreen() {
             files = lists[pickTab],
             hasAccess = access,
             selected = sel,
-            totalSelected = if (isKindPick) sel.size else sel.size + extraUris.size,
+            totalSelected = if (isKindPick) {
+                sel.size + (if (pickTab == "other") extraUris.size else 0)
+            } else {
+                sel.size + extraUris.size
+            },
             extraCount = extraUris.size,
             confirmLabel = if (isKindPick) "تم" else "إرسال",
             docsNeedAccess = pickTab == "other" && Build.VERSION.SDK_INT >= 30 && !allFiles,
@@ -1022,7 +1072,9 @@ fun HomeScreen() {
                         }
 
                         if (s == "receive" && Build.VERSION.SDK_INT >= 30 && !allFiles) {
-                            AllFilesCard { openAllFiles() }
+                            AllFilesCard(
+                                "عشان الصور والفيديوهات والمستندات ترجع لنفس مجلداتها بالظبط، فعّل الوصول لكل الملفات (مرة واحدة)"
+                            ) { openAllFiles() }
                             Spacer(modifier = Modifier.height(16.dp))
                         }
 
@@ -1085,6 +1137,13 @@ fun HomeScreen() {
                         }
 
                         if (s == "send" && sendStage == "cloneSelect") {
+                            if ("docs" in selected && Build.VERSION.SDK_INT >= 30 && !allFiles) {
+                                AllFilesCard(
+                                    "عشان يجمع كل المستندات (PDF وWord وExcel وDWG...) من الهاتف، فعّل الوصول لكل الملفات (مرة واحدة)"
+                                ) { openAllFiles() }
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+
                             if (folderKind.isNotEmpty()) {
                                 FolderPickerScreen(
                                     title = cloneCategories.first { it.key == folderKind }.title,
@@ -1108,7 +1167,9 @@ fun HomeScreen() {
                                 CloneSelectScreen(
                                     selected = selected,
                                     modes = modes,
-                                    pickedCount = pickedItems.mapValues { it.value.size },
+                                    pickedCount = pickedItems.mapValues {
+                                        it.value.size + (if (it.key == "docs") docExtras.size else 0)
+                                    },
                                     folderCount = chosenFolders.mapValues { it.value.size },
                                     onToggle = { key ->
                                         selected = if (key in selected) selected - key else selected + key
@@ -1117,15 +1178,23 @@ fun HomeScreen() {
                                         when (mode) {
                                             "all" -> modes = modes + (key to "all")
                                             "pick" -> {
-                                                pickTab = key
+                                                pickTab = if (key == "docs") "other" else key
                                                 sel = pickedItems[key]
                                                     ?.map { it.uri.toString() }
                                                     ?.toSet() ?: emptySet()
+                                                if (key == "docs") extraUris = docExtras
                                                 sendStage = "cloneKindPick"
                                             }
                                             "folders" -> {
-                                                if (MediaReader.hasAccess(context, key)) {
+                                                val ok = if (key == "docs") {
+                                                    Build.VERSION.SDK_INT < 30 || allFiles
+                                                } else {
+                                                    MediaReader.hasAccess(context, key)
+                                                }
+                                                if (ok) {
                                                     folderKind = key
+                                                } else if (key == "docs") {
+                                                    status = "فعّل الوصول لكل الملفات الأول"
                                                 } else {
                                                     status = "اسمح بالوصول للملفات الأول"
                                                     requestThen(mediaPermissions()) { permsVersion++ }
@@ -1313,7 +1382,7 @@ fun HomeScreen() {
                                             .filterKeys {
                                                 it != "contacts" && it != "calls" &&
                                                     it != "calendar" && it != "sms" &&
-                                                    it != "apps"
+                                                    it != "apps" && it != "docs"
                                             }
                                             .values.sum()
                                         Text(
@@ -1403,7 +1472,7 @@ private fun SmsBackCard(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun AllFilesCard(onClick: () -> Unit) {
+private fun AllFilesCard(text: String, onClick: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1412,7 +1481,7 @@ private fun AllFilesCard(onClick: () -> Unit) {
             .padding(16.dp)
     ) {
         Text(
-            text = "عشان الصور والفيديوهات ترجع لنفس مجلداتها بالظبط، فعّل الوصول لكل الملفات (مرة واحدة)",
+            text = text,
             color = Yellow,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold
