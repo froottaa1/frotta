@@ -229,6 +229,10 @@ fun HomeScreen() {
     var received by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var pendingData by remember { mutableStateOf<List<Pair<String, File>>>(emptyList()) }
 
+    var smsPending by remember { mutableStateOf<File?>(null) }
+    var smsPrev by remember { mutableStateOf<String?>(null) }
+    var smsIsDefault by remember { mutableStateOf(SmsSync.isDefault(context)) }
+
     var status by remember { mutableStateOf("") }
     var permDenied by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(false) }
@@ -241,7 +245,57 @@ fun HomeScreen() {
     val transfers = remember { mutableStateListOf<TransferItem>() }
     val myName = remember { Build.MODEL }
 
+    fun importSmsNow(file: File) {
+        status = "جاري كتابة الرسائل..."
+        scope.launch {
+            val n = withContext(Dispatchers.IO) { SmsSync.import(context, file) }
+            if (n >= 0) {
+                received = received + ("sms" to n)
+                smsPending = null
+                smsIsDefault = SmsSync.isDefault(context)
+                status = "تم استرداد الرسائل: $n. رجّع تطبيق الرسائل الأصلي دلوقتي"
+            } else {
+                status = "تعذر استرداد الرسائل"
+            }
+        }
+    }
+
+    val smsRoleLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val f = smsPending
+        if (f != null && SmsSync.isDefault(context)) {
+            importSmsNow(f)
+        } else {
+            status = "لازم توافق تخلي Frotta تطبيق الرسائل الافتراضي مؤقتاً عشان تكتب الرسائل"
+        }
+    }
+
+    fun askSmsRole(file: File) {
+        smsPending = file
+        if (SmsSync.isDefault(context)) {
+            importSmsNow(file)
+            return
+        }
+        val prev = SmsSync.defaultPackage(context)
+        if (prev != null && prev != context.packageName) smsPrev = prev
+        val i = SmsSync.roleIntent(context)
+        if (i == null) {
+            status = "الهاتف ده مش بيسمح بتغيير تطبيق الرسائل من هنا"
+        } else {
+            try {
+                smsRoleLauncher.launch(i)
+            } catch (e: Exception) {
+                status = "تعذر فتح نافذة اختيار تطبيق الرسائل"
+            }
+        }
+    }
+
     fun runImport(kind: String, file: File) {
+        if (kind == "sms") {
+            askSmsRole(file)
+            return
+        }
         scope.launch {
             val n = withContext(Dispatchers.IO) { DataSync.import(context, kind, file) }
             val title = cloneCategories.first { it.key == kind }.title
@@ -314,6 +368,16 @@ fun HomeScreen() {
         )
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(i)
+    }
+
+    fun openDefaultApps() {
+        try {
+            val i = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(i)
+        } catch (e: Exception) {
+            openSettings()
+        }
     }
 
     fun openAllFiles() {
@@ -483,6 +547,15 @@ fun HomeScreen() {
                     }
                 }
 
+                if ("sms" in selected) {
+                    val f = SmsSync.export(context)
+                    if (f != null) {
+                        list.add(OutFile(Uri.fromFile(f), f.name, ""))
+                    } else {
+                        skipped.add("الرسائل")
+                    }
+                }
+
                 for (kind in listOf("photos", "videos", "audio")) {
                     if (kind !in selected) continue
                     val mode = modes[kind] ?: "all"
@@ -536,6 +609,7 @@ fun HomeScreen() {
         lastSaved = ""
         received = emptyMap()
         pendingData = emptyList()
+        smsPending = null
         modes = emptyMap()
         pickedItems = emptyMap()
         chosenFolders = emptyMap()
@@ -595,6 +669,7 @@ fun HomeScreen() {
     LaunchedEffect(screen) {
         while (true) {
             allFiles = hasAllFilesAccess()
+            smsIsDefault = SmsSync.isDefault(context)
             delay(1000)
         }
     }
@@ -713,7 +788,14 @@ fun HomeScreen() {
             }
 
             AppHeader()
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            if (smsIsDefault) {
+                SmsBackCard(SmsSync.label(context, smsPrev)) { openDefaultApps() }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             Crossfade(targetState = screen) { s ->
                 Column {
@@ -1065,10 +1147,28 @@ fun HomeScreen() {
                                 if (s == "receive") {
                                     if (cloneMode) {
                                         CloneRestoreScreen(counts = received)
+                                        val pf = smsPending
+                                        if (pf != null && !smsIsDefault) {
+                                            OutlinedButton(
+                                                onClick = { askSmsRole(pf) },
+                                                shape = RoundedCornerShape(20.dp),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(52.dp)
+                                            ) {
+                                                Text(
+                                                    "إعادة محاولة استرداد الرسائل",
+                                                    color = Ink,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(12.dp))
+                                        }
                                     } else {
                                         val total = received
                                             .filterKeys {
-                                                it != "contacts" && it != "calls" && it != "calendar"
+                                                it != "contacts" && it != "calls" &&
+                                                    it != "calendar" && it != "sms"
                                             }
                                             .values.sum()
                                         Text(
@@ -1106,6 +1206,33 @@ fun HomeScreen() {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SmsBackCard(label: String, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFFB3261E))
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "Frotta هو تطبيق الرسائل الافتراضي حالياً. الرسائل الجاية بتتحفظ من غير إشعار.",
+            color = Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Button(
+            onClick = onClick,
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Yellow, contentColor = Ink),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("رجّع $label", fontWeight = FontWeight.Bold)
         }
     }
 }
