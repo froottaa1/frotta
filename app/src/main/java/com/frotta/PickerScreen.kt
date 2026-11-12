@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -131,6 +132,33 @@ private fun TabChip(tab: PickerTab, active: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+private fun DocsAccessCard(onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(PInk)
+            .padding(14.dp)
+    ) {
+        Text(
+            text = "عشان يجمع المستندات (PDF وWord وExcel وDWG...) تلقائي، فعّل الوصول لكل الملفات",
+            color = PYellow,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(
+            onClick = onClick,
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = PYellow, contentColor = PInk),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("تفعيل", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
 private fun Thumb(item: MediaItem, kind: String, loader: ImageLoader, modifier: Modifier) {
     if (kind == "audio") {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
@@ -139,6 +167,15 @@ private fun Thumb(item: MediaItem, kind: String, loader: ImageLoader, modifier: 
                 contentDescription = null,
                 tint = PInk,
                 modifier = Modifier.size(32.dp)
+            )
+        }
+    } else if (kind == "other") {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Text(
+                text = item.name.substringAfterLast('.', "?").uppercase().take(4),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = PInk
             )
         }
     } else {
@@ -283,11 +320,13 @@ fun PickerScreen(
     totalSelected: Int,
     extraCount: Int,
     confirmLabel: String,
+    docsNeedAccess: Boolean,
     onToggle: (MediaItem) -> Unit,
     onSelectAll: (List<MediaItem>) -> Unit,
     onClear: (List<MediaItem>) -> Unit,
     onPickOther: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAllFiles: () -> Unit,
     onRefresh: () -> Unit,
     onBack: () -> Unit,
     onConfirm: () -> Unit
@@ -313,6 +352,7 @@ fun PickerScreen(
         }
     }
     val list = shown ?: emptyList()
+    val useGrid = gridMode && currentTab != "other"
 
     Column(
         modifier = Modifier
@@ -367,24 +407,45 @@ fun PickerScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        if (currentTab != "other") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = list.size.toString() + " ملف",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = PInk,
-                    modifier = Modifier.weight(1f)
-                )
-                if (list.isNotEmpty()) {
-                    TextButton(onClick = { onSelectAll(list) }) {
-                        Text("تحديد الكل", fontWeight = FontWeight.Bold)
-                    }
-                    TextButton(onClick = { onClear(list) }) {
-                        Text("إلغاء التحديد", fontWeight = FontWeight.Bold)
-                    }
+        if (currentTab == "other" && docsNeedAccess) {
+            DocsAccessCard(onOpenAllFiles)
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = list.size.toString() + " ملف",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = PInk,
+                modifier = Modifier.weight(1f)
+            )
+            if (list.isNotEmpty()) {
+                TextButton(onClick = { onSelectAll(list) }) {
+                    Text("تحديد الكل", fontWeight = FontWeight.Bold)
+                }
+                TextButton(onClick = { onClear(list) }) {
+                    Text("إلغاء التحديد", fontWeight = FontWeight.Bold)
                 }
             }
+        }
+
+        if (currentTab == "other") {
+            OutlinedButton(
+                onClick = onPickOther,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+            ) {
+                Text(
+                    text = "إضافة ملفات يدوياً ($extraCount)",
+                    color = PInk,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
         }
 
         Box(
@@ -393,33 +454,6 @@ fun PickerScreen(
                 .fillMaxWidth()
         ) {
             when {
-                currentTab == "other" -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "اختار أي ملفات تانية من الهاتف (مستندات، PDF، ضغط...)",
-                            fontSize = 14.sp,
-                            color = PInk
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = onPickOther,
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier.height(52.dp)
-                        ) {
-                            Text("اختيار ملفات", fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = "تم اختيار $extraCount ملف",
-                            fontSize = 13.sp,
-                            color = PInk
-                        )
-                    }
-                }
                 !hasAccess -> {
                     Column(
                         modifier = Modifier.fillMaxSize(),
@@ -449,7 +483,7 @@ fun PickerScreen(
                 }
                 shown == null -> {
                     Text(
-                        text = "جاري التحميل...",
+                        text = if (currentTab == "other") "جاري البحث عن المستندات..." else "جاري التحميل...",
                         fontSize = 14.sp,
                         color = PInk,
                         modifier = Modifier.align(Alignment.Center)
@@ -457,13 +491,17 @@ fun PickerScreen(
                 }
                 list.isEmpty() -> {
                     Text(
-                        text = "مفيش ملفات",
+                        text = if (currentTab == "other") {
+                            "مفيش مستندات ظاهرة. فعّل الوصول لكل الملفات أو أضف يدوياً"
+                        } else {
+                            "مفيش ملفات"
+                        },
                         fontSize = 14.sp,
                         color = PInk,
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-                gridMode -> {
+                useGrid -> {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
