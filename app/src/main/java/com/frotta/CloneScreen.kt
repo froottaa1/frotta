@@ -24,11 +24,13 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Sms
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +63,15 @@ val cloneCategories = listOf(
     CloneCategory("sms", "الرسائل", "بتواريخها واتجاهها", Icons.Rounded.Sms),
     CloneCategory("calendar", "التقويم", "المواعيد والأحداث", Icons.Rounded.CalendarMonth),
     CloneCategory("apps", "التطبيقات", "ملفات التثبيت فقط", Icons.Rounded.Apps)
+)
+
+data class AppRow(
+    val pkg: String,
+    val label: String,
+    val ready: Boolean,
+    val installed: Boolean,
+    val error: String,
+    val installing: Boolean
 )
 
 @Composable
@@ -150,7 +161,7 @@ fun CloneSelectScreen(
                     )
                 }
 
-                if (isOn && cat.key in mediaKeys) {
+                if (isOn && (cat.key in mediaKeys || cat.key == "apps")) {
                     Spacer(modifier = Modifier.height(10.dp))
                     val mode = modes[cat.key] ?: "all"
                     val picked = pickedCount[cat.key] ?: 0
@@ -161,10 +172,12 @@ fun CloneSelectScreen(
                             if (picked > 0) "اختيار ($picked)" else "اختيار",
                             mode == "pick"
                         ) { onMode(cat.key, "pick") }
-                        ModeChip(
-                            if (folders > 0) "مجلدات ($folders)" else "مجلدات",
-                            mode == "folders"
-                        ) { onMode(cat.key, "folders") }
+                        if (cat.key != "apps") {
+                            ModeChip(
+                                if (folders > 0) "مجلدات ($folders)" else "مجلدات",
+                                mode == "folders"
+                            ) { onMode(cat.key, "folders") }
+                        }
                     }
                 }
             }
@@ -172,7 +185,7 @@ fun CloneSelectScreen(
         }
 
         Text(
-            text = "الصور والفيديوهات والصوتيات بتتنقل فعلياً دلوقتي. الأسماء والمكالمات والرسائل والتقويم والتطبيقات بتتفعّل في الخطوات الجاية.",
+            text = "التطبيقات بتتنقل كملفات تثبيت بس، من غير بياناتها أو حساباتها. لو مش عايز كل التطبيقات، دوس \"اختيار\" وحدد اللي تحبه.",
             fontSize = 12.sp,
             color = CInk
         )
@@ -324,7 +337,14 @@ fun CloneRestoreScreen(counts: Map<String, Int> = emptyMap()) {
         Spacer(modifier = Modifier.height(12.dp))
 
         cloneCategories.forEach { cat ->
+            val got = counts.containsKey(cat.key)
             val n = counts[cat.key] ?: 0
+            val unit = when {
+                cat.key in mediaKeys -> "ملف"
+                cat.key == "apps" -> "تطبيق"
+                cat.key == "sms" -> "رسالة"
+                else -> "عنصر"
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -348,7 +368,7 @@ fun CloneRestoreScreen(counts: Map<String, Int> = emptyMap()) {
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = if (n > 0) "$n ملف" else "في الانتظار",
+                    text = if (got) "$n $unit" else "في الانتظار",
                     fontSize = 13.sp,
                     color = CInk
                 )
@@ -357,4 +377,97 @@ fun CloneRestoreScreen(counts: Map<String, Int> = emptyMap()) {
         }
         Spacer(modifier = Modifier.height(16.dp))
     }
+}
+
+@Composable
+fun AppsInstallCard(
+    rows: List<AppRow>,
+    canInstall: Boolean,
+    onAllowInstall: () -> Unit,
+    onInstallAll: () -> Unit,
+    onInstallOne: (String) -> Unit
+) {
+    val done = rows.count { it.installed }
+    val pending = rows.count { it.ready && !it.installed }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(CInk)
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "التطبيقات المستلمة ($done / ${rows.size} مثبّت)",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            color = CYellow
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+
+        if (!canInstall) {
+            Text(
+                text = "لازم تسمح لـ Frotta بتثبيت التطبيقات (مرة واحدة)",
+                fontSize = 13.sp,
+                color = CSoft
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onAllowInstall,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = CYellow, contentColor = CInk),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("السماح بالتثبيت", fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        Button(
+            onClick = onInstallAll,
+            enabled = canInstall && pending > 0,
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = CYellow, contentColor = CInk),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("تثبيت الكل ($pending)", fontWeight = FontWeight.Bold)
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+
+        rows.forEach { r ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = r.label,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CYellow,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = when {
+                            r.installed -> "مثبّت"
+                            r.installing -> "جاري التثبيت..."
+                            r.error.isNotEmpty() -> r.error
+                            r.ready -> "جاهز للتثبيت"
+                            else -> "قيد الاستلام"
+                        },
+                        fontSize = 11.sp,
+                        color = CSoft
+                    )
+                }
+                if (r.ready && !r.installed && !r.installing && canInstall) {
+                    TextButton(onClick = { onInstallOne(r.pkg) }) {
+                        Text("تثبيت", color = CYellow, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+    Spacer(modifier = Modifier.height(16.dp))
 }
