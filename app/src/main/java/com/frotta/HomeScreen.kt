@@ -1,6 +1,7 @@
 package com.frotta
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -116,7 +117,7 @@ private fun requiredPermissions(): Array<String> {
     return list.toTypedArray()
 }
 
-private fun senderDataPermissions(): Array<String> {
+private fun mediaPermissions(): Array<String> {
     val list = mutableListOf<String>()
     if (Build.VERSION.SDK_INT >= 33) {
         list += Manifest.permission.READ_MEDIA_IMAGES
@@ -128,6 +129,12 @@ private fun senderDataPermissions(): Array<String> {
     if (Build.VERSION.SDK_INT >= 29) {
         list += Manifest.permission.ACCESS_MEDIA_LOCATION
     }
+    return list.toTypedArray()
+}
+
+private fun senderDataPermissions(): Array<String> {
+    val list = mutableListOf<String>()
+    list.addAll(mediaPermissions())
     list += Manifest.permission.READ_CONTACTS
     list += Manifest.permission.READ_CALL_LOG
     list += Manifest.permission.READ_SMS
@@ -148,6 +155,23 @@ private fun receiverDataPermissions(): Array<String> {
         list += Manifest.permission.WRITE_EXTERNAL_STORAGE
     }
     return list.toTypedArray()
+}
+
+private fun receivePermissions(clone: Boolean): Array<String> {
+    val list = ArrayList<String>()
+    list.addAll(requiredPermissions())
+    if (clone) {
+        list.addAll(receiverDataPermissions())
+    } else if (Build.VERSION.SDK_INT < 29) {
+        list.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+    }
+    return list.distinct().toTypedArray()
+}
+
+private fun hasAllPerms(context: Context, perms: Array<String>): Boolean {
+    return perms.all {
+        ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+    }
 }
 
 private fun newToken(): String {
@@ -177,19 +201,28 @@ fun HomeScreen() {
     val scope = rememberCoroutineScope()
 
     var screen by remember { mutableStateOf("home") }
+    var sendStage by remember { mutableStateOf("pick") }
     var cloneMode by remember { mutableStateOf(false) }
+
     var selected by remember { mutableStateOf(cloneCategories.map { it.key }.toSet()) }
     var modes by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var picked by remember { mutableStateOf<Map<String, List<Uri>>>(emptyMap()) }
+    var pickedItems by remember { mutableStateOf<Map<String, List<MediaItem>>>(emptyMap()) }
     var chosenFolders by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
     var folderKind by remember { mutableStateOf("") }
     var folderItems by remember { mutableStateOf<List<MediaItem>?>(null) }
-    var pickKind by remember { mutableStateOf("") }
 
-    var cloneRunning by remember { mutableStateOf(false) }
-    var cloneTotal by remember { mutableStateOf(0) }
-    var cloneDone by remember { mutableStateOf(0) }
-    var cloneFailed by remember { mutableStateOf(0) }
+    var pickTab by remember { mutableStateOf("photos") }
+    var lists by remember { mutableStateOf<Map<String, List<MediaItem>>>(emptyMap()) }
+    var sel by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var extraUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var permsVersion by remember { mutableStateOf(0) }
+    var afterPerms by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    var batch by remember { mutableStateOf<List<OutFile>>(emptyList()) }
+    var sending by remember { mutableStateOf(false) }
+    var batchTotal by remember { mutableStateOf(0) }
+    var doneCount by remember { mutableStateOf(0) }
+    var failedCount by remember { mutableStateOf(0) }
     var skippedCount by remember { mutableStateOf(0) }
     var lastSaved by remember { mutableStateOf("") }
     var received by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
@@ -238,40 +271,31 @@ fun HomeScreen() {
             },
             onDisconnected = {
                 connected = false
-                cloneRunning = false
-                status = "انقطع الاتصال. أعد الاتصال وابدأ تاني، والملفات اللي وصلت هتتخطى"
+                sending = false
+                status = "انقطع الاتصال. أعد الاتصال وهيكمل من اللي وصل"
                 needRestart = true
             },
             onTransfer = { item ->
                 val i = transfers.indexOfFirst { it.id == item.id }
-                if (cloneMode) {
-                    if (item.done) {
-                        if (item.skipped) skippedCount++
-                        if (item.sending) {
-                            cloneDone++
-                        } else if (!item.skipped) {
-                            val k = mediaKindOf(item.name)
-                            if (k != "data") {
-                                received = received + (k to ((received[k] ?: 0) + 1))
-                            }
-                            if (item.note.isNotEmpty()) lastSaved = item.note
-                        }
-                    }
-                    if (item.failed && item.sending) cloneFailed++
-                    if (item.done || (item.failed && item.sending)) {
-                        if (i >= 0) transfers.removeAt(i)
-                    } else if (i >= 0) {
-                        transfers[i] = item
-                    } else {
-                        transfers.add(0, item)
-                    }
-                } else {
+                if (item.done) {
                     if (item.skipped) skippedCount++
-                    if (i >= 0) {
-                        transfers[i] = item
-                    } else {
-                        transfers.add(0, item)
+                    if (item.sending) {
+                        doneCount++
+                    } else if (!item.skipped) {
+                        val k = mediaKindOf(item.name)
+                        if (k != "data") {
+                            received = received + (k to ((received[k] ?: 0) + 1))
+                        }
+                        if (item.note.isNotEmpty()) lastSaved = item.note
                     }
+                }
+                if (item.failed && item.sending) failedCount++
+                if (item.done || (item.failed && item.sending)) {
+                    if (i >= 0) transfers.removeAt(i)
+                } else if (i >= 0) {
+                    transfers[i] = item
+                } else {
+                    transfers.add(0, item)
                 }
             },
             onDataFile = { kind, file -> runImport(kind, file) }
@@ -280,45 +304,6 @@ fun HomeScreen() {
 
     DisposableEffect(Unit) {
         onDispose { manager.stopAll() }
-    }
-
-    LaunchedEffect(needRestart) {
-        if (needRestart) {
-            needRestart = false
-            if (screen == "receive") {
-                val t = newToken()
-                token = t
-                manager.startReceiving(myName, t)
-            }
-        }
-    }
-
-    LaunchedEffect(screen) {
-        while (true) {
-            allFiles = hasAllFilesAccess()
-            delay(1000)
-        }
-    }
-
-    val dataPermLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { result ->
-        val denied = result.filterValues { !it }.keys
-        permDenied = denied.isNotEmpty()
-        status = if (denied.isEmpty()) {
-            "تم منح الصلاحيات"
-        } else {
-            "فيه ${denied.size} صلاحيات مترفضة. افتح الإعدادات وفعّلها"
-        }
-        val retry = pendingData
-        retry.forEach { runImport(it.first, it.second) }
-    }
-
-    fun requestData(perms: Array<String>) {
-        val missing = perms.filter {
-            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (missing.isNotEmpty()) dataPermLauncher.launch(missing.toTypedArray())
     }
 
     fun openSettings() {
@@ -349,24 +334,14 @@ fun HomeScreen() {
         }
     }
 
-    LaunchedEffect(connected) {
-        if (connected) {
-            if (screen == "send" && cloneMode) {
-                requestData(senderDataPermissions())
-            } else if (screen == "receive" && cloneMode) {
-                requestData(receiverDataPermissions())
-            } else if (screen == "receive" && Build.VERSION.SDK_INT < 29) {
-                requestData(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE))
-            }
-        }
-    }
-
-    LaunchedEffect(folderKind) {
-        if (folderKind.isNotEmpty()) {
-            folderItems = null
-            folderItems = withContext(Dispatchers.IO) {
-                MediaReader.readAll(context, folderKind)
-            }
+    fun beginReceive() {
+        if (hasAllPerms(context, requiredPermissions())) {
+            val t = newToken()
+            token = t
+            manager.startReceiving(myName, t)
+        } else {
+            permDenied = true
+            status = "لازم توافق على صلاحيات البلوتوث والموقع عشان الاتصال"
         }
     }
 
@@ -403,11 +378,69 @@ fun HomeScreen() {
         }
     }
 
-    fun startCloneSend() {
-        cloneRunning = true
-        cloneDone = 0
-        cloneFailed = 0
-        skippedCount = 0
+    val permLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        permsVersion++
+        val denied = result.filterValues { !it }.keys
+        permDenied = denied.isNotEmpty()
+        if (denied.isNotEmpty()) {
+            status = "فيه ${denied.size} صلاحيات مترفضة. تقدر تفتح الإعدادات وتفعّلها"
+        }
+        pendingData.forEach { runImport(it.first, it.second) }
+        val a = afterPerms
+        afterPerms = null
+        a?.invoke()
+    }
+
+    fun requestThen(perms: Array<String>, action: () -> Unit) {
+        val missing = perms.filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            action()
+        } else {
+            afterPerms = action
+            permLauncher.launch(missing.toTypedArray())
+        }
+    }
+
+    fun goConnect() {
+        sendStage = "connect"
+        requestThen(requiredPermissions()) {
+            if (hasAllPerms(context, requiredPermissions())) {
+                startScan()
+            } else {
+                permDenied = true
+                status = "لازم توافق على صلاحيات البلوتوث والموقع عشان الاتصال"
+            }
+        }
+    }
+
+    fun confirmPick() {
+        val chosen = lists.values.flatten().filter { it.uri.toString() in sel }
+        val out = ArrayList<OutFile>()
+        chosen.forEach { out.add(OutFile(it.uri, it.name, "", it.modified)) }
+        extraUris.forEach { out.add(OutFile(it, "", "")) }
+        if (out.isEmpty()) {
+            status = "اختار ملف واحد على الأقل"
+        } else {
+            batch = out
+            batchTotal = out.size
+            goConnect()
+        }
+    }
+
+    fun confirmKindPick() {
+        val kind = pickTab
+        val chosen = (lists[kind] ?: emptyList()).filter { it.uri.toString() in sel }
+        pickedItems = pickedItems + (kind to chosen)
+        modes = modes + (kind to (if (chosen.isEmpty()) "all" else "pick"))
+        sel = emptySet()
+        sendStage = "cloneSelect"
+    }
+
+    fun startClone() {
         status = "جاري تجهيز الملفات..."
         scope.launch {
             val skipped = ArrayList<String>()
@@ -433,7 +466,9 @@ fun HomeScreen() {
                     if (kind !in selected) continue
                     val mode = modes[kind] ?: "all"
                     if (mode == "pick") {
-                        picked[kind]?.forEach { list.add(OutFile(it, "", "")) }
+                        pickedItems[kind]?.forEach {
+                            list.add(OutFile(it.uri, it.name, it.folder, it.modified))
+                        }
                     } else if (MediaReader.hasAccess(context, kind)) {
                         val all = MediaReader.readAll(context, kind)
                         val src = if (mode == "folders") {
@@ -449,50 +484,136 @@ fun HomeScreen() {
                 }
                 list
             }
-            cloneTotal = out.size
             val note = if (skipped.isEmpty()) {
                 ""
             } else {
                 "  (اتخطّى: " + skipped.joinToString("، ") + " بسبب الصلاحيات)"
             }
             if (out.isEmpty()) {
-                cloneRunning = false
                 status = "مفيش حاجة للإرسال. تأكد من الصلاحيات والاختيار" + note
             } else {
-                status = "جاري الإرسال..." + note
-                manager.sendQueue(out)
+                batch = out
+                batchTotal = out.size
+                goConnect()
+                status = "جاهز لإرسال ${out.size} ملف" + note
             }
         }
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { result ->
-        if (result.values.all { it }) {
-            if (screen == "receive") {
-                val t = newToken()
-                token = t
-                manager.startReceiving(myName, t)
-            }
-            if (screen == "send") startScan()
+    fun goHome() {
+        manager.stopAll()
+        transfers.clear()
+        connected = false
+        searching = false
+        cloneMode = false
+        sending = false
+        batch = emptyList()
+        batchTotal = 0
+        doneCount = 0
+        failedCount = 0
+        skippedCount = 0
+        lastSaved = ""
+        received = emptyMap()
+        pendingData = emptyList()
+        modes = emptyMap()
+        pickedItems = emptyMap()
+        chosenFolders = emptyMap()
+        folderKind = ""
+        folderItems = null
+        lists = emptyMap()
+        sel = emptySet()
+        extraUris = emptyList()
+        pickTab = "photos"
+        sendStage = "pick"
+        permDenied = false
+        token = ""
+        status = ""
+        showManual = false
+        manualCode = ""
+        screen = "home"
+    }
+
+    fun goBack() {
+        if (screen == "send" && sendStage == "cloneKindPick") {
+            sel = emptySet()
+            sendStage = "cloneSelect"
+        } else if (screen == "send" && sendStage == "connect" && !connected) {
+            manager.stopAll()
+            searching = false
+            status = ""
+            showManual = false
+            batch = emptyList()
+            sendStage = if (cloneMode) "cloneSelect" else "pick"
+        } else if (screen == "send" && sendStage == "cloneSelect" && folderKind.isNotEmpty()) {
+            folderKind = ""
         } else {
-            permDenied = true
-            status = "لازم توافق على الصلاحيات عشان التطبيق يشتغل"
+            goHome()
         }
     }
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
-        if (uris.isNotEmpty()) manager.sendFiles(uris)
+        if (uris.isNotEmpty()) {
+            batchTotal += uris.size
+            sending = true
+            manager.sendFiles(uris)
+        }
     }
 
-    val mediaPicker = rememberLauncherForActivityResult(
+    val otherPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
-        if (uris.isNotEmpty() && pickKind.isNotEmpty()) {
-            picked = picked + (pickKind to uris)
-            modes = modes + (pickKind to "pick")
+        if (uris.isNotEmpty()) {
+            extraUris = (extraUris + uris).distinct()
+        }
+    }
+
+    LaunchedEffect(needRestart) {
+        if (needRestart) {
+            needRestart = false
+            if (screen == "receive") beginReceive()
+        }
+    }
+
+    LaunchedEffect(screen) {
+        while (true) {
+            allFiles = hasAllFilesAccess()
+            delay(1000)
+        }
+    }
+
+    LaunchedEffect(connected) {
+        if (connected && screen == "send" && batch.isNotEmpty()) {
+            doneCount = 0
+            failedCount = 0
+            skippedCount = 0
+            batchTotal = batch.size
+            sending = true
+            status = "جاري الإرسال..."
+            manager.sendQueue(batch)
+        }
+    }
+
+    LaunchedEffect(folderKind) {
+        if (folderKind.isNotEmpty()) {
+            folderItems = null
+            folderItems = withContext(Dispatchers.IO) {
+                MediaReader.readAll(context, folderKind)
+            }
+        }
+    }
+
+    LaunchedEffect(pickTab, permsVersion, screen, sendStage) {
+        val tab = pickTab
+        val inPicker = screen == "send" && (sendStage == "pick" || sendStage == "cloneKindPick")
+        if (inPicker && tab != "other" && lists[tab] == null &&
+            MediaReader.hasAccess(context, tab)
+        ) {
+            val r = withContext(Dispatchers.IO) {
+                MediaReader.readAll(context, tab).sortedByDescending { it.modified }
+            }
+            lists = lists + (tab to r)
         }
     }
 
@@ -504,330 +625,382 @@ fun HomeScreen() {
         folderItems?.let { MediaReader.folders(it) }
     }
 
-    fun goHome() {
-        manager.stopAll()
-        transfers.clear()
-        connected = false
-        searching = false
-        cloneMode = false
-        cloneRunning = false
-        cloneTotal = 0
-        cloneDone = 0
-        cloneFailed = 0
-        skippedCount = 0
-        lastSaved = ""
-        received = emptyMap()
-        pendingData = emptyList()
-        modes = emptyMap()
-        picked = emptyMap()
-        chosenFolders = emptyMap()
-        folderKind = ""
-        folderItems = null
-        permDenied = false
-        token = ""
-        status = ""
-        showManual = false
-        manualCode = ""
-        screen = "home"
-    }
+    BackHandler(enabled = screen != "home") { goBack() }
 
-    BackHandler(enabled = screen != "home") { goHome() }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp)
-    ) {
-        Spacer(modifier = Modifier.height(20.dp))
-
-        if (screen != "home") {
-            TextButton(onClick = { goHome() }) {
-                Icon(
-                    imageVector = Icons.Rounded.ArrowForward,
-                    contentDescription = null,
-                    tint = Ink,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "رجوع",
-                    color = Ink,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-            }
+    if (screen == "send" && (sendStage == "pick" || sendStage == "cloneKindPick")) {
+        val isKindPick = sendStage == "cloneKindPick"
+        val access = remember(permsVersion, pickTab) {
+            pickTab == "other" || MediaReader.hasAccess(context, pickTab)
         }
+        PickerScreen(
+            title = if (isKindPick) {
+                pickerTabs.firstOrNull { it.key == pickTab }?.title ?: ""
+            } else {
+                "اختيار الملفات"
+            },
+            tabs = if (isKindPick) pickerTabs.filter { it.key == pickTab } else pickerTabs,
+            currentTab = pickTab,
+            onTab = { pickTab = it },
+            files = lists[pickTab],
+            hasAccess = access,
+            selected = sel,
+            totalSelected = if (isKindPick) sel.size else sel.size + extraUris.size,
+            extraCount = extraUris.size,
+            confirmLabel = if (isKindPick) "تم" else "إرسال",
+            onToggle = { item ->
+                val k = item.uri.toString()
+                sel = if (k in sel) sel - k else sel + k
+            },
+            onSelectAll = { list -> sel = sel + list.map { it.uri.toString() } },
+            onClear = { list -> sel = sel - list.map { it.uri.toString() }.toSet() },
+            onPickOther = { otherPicker.launch(arrayOf("*/*")) },
+            onOpenSettings = { openSettings() },
+            onRefresh = { permsVersion++ },
+            onBack = { goBack() },
+            onConfirm = { if (isKindPick) confirmKindPick() else confirmPick() }
+        )
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+        ) {
+            Spacer(modifier = Modifier.height(20.dp))
 
-        AppHeader()
-        Spacer(modifier = Modifier.height(28.dp))
-
-        Crossfade(targetState = screen) { s ->
-            Column {
-                if (s == "home") {
-                    AppearIn(150) {
-                        BigCard(Icons.Rounded.FileUpload, "إرسال", "امسح الكود أو اكتبه يدوياً") {
-                            cloneMode = false
-                            screen = "send"
-                            permissionLauncher.launch(requiredPermissions())
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    AppearIn(300) {
-                        BigCard(Icons.Rounded.FileDownload, "استقبال", "اعرض كود عشان الهاتف الآخر يتصل") {
-                            cloneMode = false
-                            screen = "receive"
-                            permissionLauncher.launch(requiredPermissions())
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    AppearIn(450) {
-                        BigCard(Icons.Rounded.ContentCopy, "استنساخ", "انقل كل بيانات الهاتف القديم للجديد") {
-                            screen = "cloneRole"
-                        }
-                    }
-                } else if (s == "cloneRole") {
-                    Text(
-                        text = "استنساخ",
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Ink
+            if (screen != "home") {
+                TextButton(onClick = { goBack() }) {
+                    Icon(
+                        imageVector = Icons.Rounded.ArrowForward,
+                        contentDescription = null,
+                        tint = Ink,
+                        modifier = Modifier.size(20.dp)
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(text = "الهاتف ده هو...", fontSize = 14.sp, color = Ink)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    BigCard(Icons.Rounded.PhoneAndroid, "الهاتف القديم", "هبعت منه البيانات") {
-                        cloneMode = true
-                        screen = "send"
-                        permissionLauncher.launch(requiredPermissions())
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    BigCard(Icons.Rounded.Restore, "الهاتف الجديد", "هسترد عليه البيانات") {
-                        cloneMode = true
-                        screen = "receive"
-                        permissionLauncher.launch(requiredPermissions())
-                    }
-                } else {
-                    val title = when {
-                        cloneMode && s == "send" -> "استنساخ: الهاتف القديم"
-                        cloneMode -> "استنساخ: الهاتف الجديد"
-                        s == "send" -> "إرسال"
-                        else -> "استقبال"
-                    }
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = title,
-                        fontSize = 26.sp,
+                        text = "رجوع",
+                        color = Ink,
                         fontWeight = FontWeight.Bold,
-                        color = Ink
+                        fontSize = 16.sp
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
 
-                    AnimatedVisibility(visible = status.isNotEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(SoftYellow)
-                                .padding(14.dp)
-                        ) {
-                            Text(text = status, color = Ink, fontSize = 14.sp)
-                        }
-                    }
+            AppHeader()
+            Spacer(modifier = Modifier.height(28.dp))
 
-                    if (s == "receive" && Build.VERSION.SDK_INT >= 30 && !allFiles) {
-                        AllFilesCard { openAllFiles() }
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    if (permDenied) {
-                        OutlinedButton(
-                            onClick = { openSettings() },
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                        ) {
-                            Text("فتح إعدادات الصلاحيات", color = Ink, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    if (s == "receive" && !connected && qrImage != null) {
-                        AppearIn(100) {
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(28.dp))
-                                        .background(Color.White)
-                                        .padding(18.dp)
-                                ) {
-                                    Image(
-                                        bitmap = qrImage,
-                                        contentDescription = "QR",
-                                        modifier = Modifier.size(230.dp)
-                                    )
-                                }
+            Crossfade(targetState = screen) { s ->
+                Column {
+                    if (s == "home") {
+                        AppearIn(150) {
+                            BigCard(Icons.Rounded.FileUpload, "إرسال", "اختار الملفات وبعدين امسح الكود") {
+                                cloneMode = false
+                                status = ""
+                                screen = "send"
+                                sendStage = "pick"
+                                pickTab = "photos"
+                                requestThen(requiredPermissions() + mediaPermissions()) { }
                             }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
+                        AppearIn(300) {
+                            BigCard(Icons.Rounded.FileDownload, "استقبال", "اعرض كود عشان الهاتف الآخر يتصل") {
+                                cloneMode = false
+                                status = ""
+                                screen = "receive"
+                                requestThen(receivePermissions(false)) { beginReceive() }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        AppearIn(450) {
+                            BigCard(Icons.Rounded.ContentCopy, "استنساخ", "انقل كل بيانات الهاتف القديم للجديد") {
+                                screen = "cloneRole"
+                            }
+                        }
+                    } else if (s == "cloneRole") {
                         Text(
-                            text = "أو اكتب الكود ده في الهاتف الآخر",
-                            color = Ink,
-                            fontSize = 14.sp,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                            text = "استنساخ",
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Ink
                         )
                         Spacer(modifier = Modifier.height(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.CenterHorizontally)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(Ink)
-                                .padding(horizontal = 22.dp, vertical = 12.dp)
-                        ) {
-                            Text(
-                                text = token.chunked(4).joinToString("  "),
-                                color = Yellow,
-                                fontSize = 26.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                        Text(text = "الهاتف ده هو...", fontSize = 14.sp, color = Ink)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        BigCard(Icons.Rounded.PhoneAndroid, "الهاتف القديم", "هبعت منه البيانات") {
+                            cloneMode = true
+                            status = ""
+                            screen = "send"
+                            sendStage = "cloneSelect"
+                            requestThen(requiredPermissions() + senderDataPermissions()) { }
                         }
-                        Spacer(modifier = Modifier.height(20.dp))
-                    }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        BigCard(Icons.Rounded.Restore, "الهاتف الجديد", "هسترد عليه البيانات") {
+                            cloneMode = true
+                            status = ""
+                            screen = "receive"
+                            requestThen(receivePermissions(true)) { beginReceive() }
+                        }
+                    } else {
+                        val title = when {
+                            cloneMode && s == "send" -> "استنساخ: الهاتف القديم"
+                            cloneMode -> "استنساخ: الهاتف الجديد"
+                            s == "send" -> "إرسال"
+                            else -> "استقبال"
+                        }
+                        Text(
+                            text = title,
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Ink
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                    if (s == "send" && !connected) {
-                        if (searching) {
+                        AnimatedVisibility(visible = status.isNotEmpty()) {
                             Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 16.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(SoftYellow)
+                                    .padding(14.dp)
                             ) {
-                                PulseRings()
+                                Text(text = status, color = Ink, fontSize = 14.sp)
+                            }
+                        }
+
+                        if (s == "receive" && Build.VERSION.SDK_INT >= 30 && !allFiles) {
+                            AllFilesCard { openAllFiles() }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+
+                        if (permDenied) {
+                            OutlinedButton(
+                                onClick = { openSettings() },
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                            ) {
+                                Text("فتح إعدادات الصلاحيات", color = Ink, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                         }
-                        Button(
-                            onClick = { startScan() },
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(58.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.QrCodeScanner,
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("امسح الكود", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        OutlinedButton(
-                            onClick = { showManual = !showManual },
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Keyboard,
-                                contentDescription = null,
-                                tint = Ink,
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("إدخال الكود يدوياً", color = Ink, fontWeight = FontWeight.Bold)
-                        }
-                        AnimatedVisibility(visible = showManual) {
-                            Column {
-                                Spacer(modifier = Modifier.height(10.dp))
-                                OutlinedTextField(
-                                    value = manualCode,
-                                    onValueChange = { input ->
-                                        manualCode = input.uppercase()
-                                            .filter { it.isLetterOrDigit() }
-                                            .take(8)
-                                    },
-                                    label = { Text("الكود (8 حروف وأرقام)") },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(18.dp),
-                                    keyboardOptions = KeyboardOptions(
-                                        capitalization = KeyboardCapitalization.Characters
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Button(
-                                    onClick = { connectManual() },
-                                    shape = RoundedCornerShape(20.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(52.dp)
+
+                        if (s == "receive" && !connected && qrImage != null) {
+                            AppearIn(100) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Text("اتصل", fontWeight = FontWeight.Bold)
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(28.dp))
+                                            .background(Color.White)
+                                            .padding(18.dp)
+                                    ) {
+                                        Image(
+                                            bitmap = qrImage,
+                                            contentDescription = "QR",
+                                            modifier = Modifier.size(230.dp)
+                                        )
+                                    }
                                 }
                             }
-                        }
-                        Spacer(modifier = Modifier.height(20.dp))
-                    }
-
-                    AnimatedVisibility(
-                        visible = connected,
-                        enter = fadeIn(tween(400)) + slideInVertically(tween(400)) { it / 3 }
-                    ) {
-                        Column {
-                            Row(
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "أو اكتب الكود ده في الهاتف الآخر",
+                                color = Ink,
+                                fontSize = 14.sp,
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(24.dp))
+                                    .align(Alignment.CenterHorizontally)
+                                    .clip(RoundedCornerShape(18.dp))
                                     .background(Ink)
-                                    .padding(20.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(horizontal = 22.dp, vertical = 12.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.CheckCircle,
-                                    contentDescription = null,
-                                    tint = Yellow,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
                                 Text(
-                                    text = "تم الاتصال",
+                                    text = token.chunked(4).joinToString("  "),
                                     color = Yellow,
-                                    fontSize = 18.sp,
+                                    fontSize = 26.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
 
-                            if (s == "send" && !cloneMode) {
-                                Button(
-                                    onClick = { filePicker.launch(arrayOf("*/*")) },
-                                    shape = RoundedCornerShape(20.dp),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(58.dp)
+                        if (s == "send" && sendStage == "cloneSelect") {
+                            if (folderKind.isNotEmpty()) {
+                                FolderPickerScreen(
+                                    title = cloneCategories.first { it.key == folderKind }.title,
+                                    folders = folders,
+                                    chosen = chosenFolders[folderKind] ?: emptySet(),
+                                    onToggle = { path ->
+                                        val k = folderKind
+                                        val cur = chosenFolders[k] ?: emptySet()
+                                        chosenFolders = chosenFolders + (
+                                            k to (if (path in cur) cur - path else cur + path)
+                                        )
+                                    },
+                                    onDone = {
+                                        val k = folderKind
+                                        val any = (chosenFolders[k] ?: emptySet()).isNotEmpty()
+                                        modes = modes + (k to (if (any) "folders" else "all"))
+                                        folderKind = ""
+                                    }
+                                )
+                            } else {
+                                CloneSelectScreen(
+                                    selected = selected,
+                                    modes = modes,
+                                    pickedCount = pickedItems.mapValues { it.value.size },
+                                    folderCount = chosenFolders.mapValues { it.value.size },
+                                    onToggle = { key ->
+                                        selected = if (key in selected) selected - key else selected + key
+                                    },
+                                    onMode = { key, mode ->
+                                        when (mode) {
+                                            "all" -> modes = modes + (key to "all")
+                                            "pick" -> {
+                                                pickTab = key
+                                                sel = pickedItems[key]
+                                                    ?.map { it.uri.toString() }
+                                                    ?.toSet() ?: emptySet()
+                                                sendStage = "cloneKindPick"
+                                            }
+                                            "folders" -> {
+                                                if (MediaReader.hasAccess(context, key)) {
+                                                    folderKind = key
+                                                } else {
+                                                    status = "اسمح بالوصول للملفات الأول"
+                                                    requestThen(mediaPermissions()) { permsVersion++ }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onStart = { startClone() }
+                                )
+                            }
+                        }
+
+                        if (s == "send" && sendStage == "connect" && !connected) {
+                            Text(
+                                text = "جاهز لإرسال ${batch.size} ملف",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Ink
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            if (searching) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.FileUpload,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        "اختار ملفات وابعت",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp
-                                    )
+                                    PulseRings()
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
                             }
+                            Button(
+                                onClick = { goConnect() },
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(58.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.QrCodeScanner,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("امسح الكود", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = { showManual = !showManual },
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Keyboard,
+                                    contentDescription = null,
+                                    tint = Ink,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("إدخال الكود يدوياً", color = Ink, fontWeight = FontWeight.Bold)
+                            }
+                            AnimatedVisibility(visible = showManual) {
+                                Column {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    OutlinedTextField(
+                                        value = manualCode,
+                                        onValueChange = { input ->
+                                            manualCode = input.uppercase()
+                                                .filter { it.isLetterOrDigit() }
+                                                .take(8)
+                                        },
+                                        label = { Text("الكود (8 حروف وأرقام)") },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(18.dp),
+                                        keyboardOptions = KeyboardOptions(
+                                            capitalization = KeyboardCapitalization.Characters
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Button(
+                                        onClick = { connectManual() },
+                                        shape = RoundedCornerShape(20.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(52.dp)
+                                    ) {
+                                        Text("اتصل", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(20.dp))
+                        }
 
-                            if (s == "send" && cloneMode) {
-                                if (cloneRunning) {
-                                    CloneProgressCard(cloneDone, cloneFailed, cloneTotal)
+                        AnimatedVisibility(
+                            visible = connected,
+                            enter = fadeIn(tween(400)) + slideInVertically(tween(400)) { it / 3 }
+                        ) {
+                            Column {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(24.dp))
+                                        .background(Ink)
+                                        .padding(20.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Yellow,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = "تم الاتصال",
+                                        color = Yellow,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                if (s == "send") {
+                                    if (sending) {
+                                        CloneProgressCard(doneCount, failedCount, batchTotal)
+                                    }
                                     if (skippedCount > 0) {
                                         Text(
                                             text = "اتخطّى $skippedCount ملف موجود بالفعل عند الهاتف الآخر",
@@ -836,86 +1009,70 @@ fun HomeScreen() {
                                         )
                                         Spacer(modifier = Modifier.height(12.dp))
                                     }
-                                } else if (folderKind.isNotEmpty()) {
-                                    FolderPickerScreen(
-                                        title = cloneCategories.first { it.key == folderKind }.title,
-                                        folders = folders,
-                                        chosen = chosenFolders[folderKind] ?: emptySet(),
-                                        onToggle = { path ->
-                                            val k = folderKind
-                                            val cur = chosenFolders[k] ?: emptySet()
-                                            chosenFolders = chosenFolders + (
-                                                k to (if (path in cur) cur - path else cur + path)
-                                            )
-                                        },
-                                        onDone = {
-                                            val k = folderKind
-                                            val any = (chosenFolders[k] ?: emptySet()).isNotEmpty()
-                                            modes = modes + (k to (if (any) "folders" else "all"))
-                                            folderKind = ""
-                                        }
-                                    )
-                                } else {
-                                    CloneSelectScreen(
-                                        selected = selected,
-                                        modes = modes,
-                                        pickedCount = picked.mapValues { it.value.size },
-                                        folderCount = chosenFolders.mapValues { it.value.size },
-                                        onToggle = { key ->
-                                            selected = if (key in selected) selected - key else selected + key
-                                        },
-                                        onMode = { key, mode ->
-                                            when (mode) {
-                                                "all" -> modes = modes + (key to "all")
-                                                "pick" -> {
-                                                    pickKind = key
-                                                    val mime = when (key) {
-                                                        "photos" -> "image/*"
-                                                        "videos" -> "video/*"
-                                                        else -> "audio/*"
-                                                    }
-                                                    mediaPicker.launch(arrayOf(mime))
-                                                }
-                                                "folders" -> {
-                                                    if (MediaReader.hasAccess(context, key)) {
-                                                        folderKind = key
-                                                    } else {
-                                                        status = "اسمح بالوصول للملفات الأول"
-                                                        requestData(senderDataPermissions())
-                                                    }
-                                                }
-                                            }
-                                        },
-                                        onStart = { startCloneSend() }
-                                    )
+                                    OutlinedButton(
+                                        onClick = { filePicker.launch(arrayOf("*/*")) },
+                                        shape = RoundedCornerShape(20.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(52.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.FileUpload,
+                                            contentDescription = null,
+                                            tint = Ink,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            "إرسال ملفات إضافية",
+                                            color = Ink,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
                                 }
-                            }
 
-                            if (s == "receive" && cloneMode) {
-                                CloneRestoreScreen(counts = received)
-                                if (skippedCount > 0) {
-                                    Text(
-                                        text = "تم تخطي $skippedCount ملف موجود بالفعل",
-                                        color = Ink,
-                                        fontSize = 13.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                }
-                                if (lastSaved.isNotEmpty()) {
-                                    Text(
-                                        text = "آخر ملف اتحفظ في: $lastSaved",
-                                        color = Ink,
-                                        fontSize = 12.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                if (s == "receive") {
+                                    if (cloneMode) {
+                                        CloneRestoreScreen(counts = received)
+                                    } else {
+                                        val total = received
+                                            .filterKeys {
+                                                it != "contacts" && it != "calls" && it != "calendar"
+                                            }
+                                            .values.sum()
+                                        Text(
+                                            text = "استلمت $total ملف",
+                                            color = Ink,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                    }
+                                    if (skippedCount > 0) {
+                                        Text(
+                                            text = "تم تخطي $skippedCount ملف موجود بالفعل",
+                                            color = Ink,
+                                            fontSize = 13.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                    }
+                                    if (lastSaved.isNotEmpty()) {
+                                        Text(
+                                            text = "آخر ملف اتحفظ في: $lastSaved",
+                                            color = Ink,
+                                            fontSize = 12.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    transfers.forEach { item ->
-                        TransferRow(item)
-                        Spacer(modifier = Modifier.height(10.dp))
+                        transfers.forEach { item ->
+                            TransferRow(item)
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
                     }
                 }
             }
