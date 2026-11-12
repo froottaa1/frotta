@@ -217,6 +217,7 @@ fun HomeScreen() {
     var extraUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var permsVersion by remember { mutableStateOf(0) }
     var afterPerms by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var docsScan by remember { mutableStateOf<Boolean?>(null) }
 
     var batch by remember { mutableStateOf<List<OutFile>>(emptyList()) }
     var sending by remember { mutableStateOf(false) }
@@ -419,11 +420,31 @@ fun HomeScreen() {
 
     fun confirmPick() {
         val chosen = lists.values.flatten().filter { it.uri.toString() in sel }
+        val keepDates = cloneMode
         val out = ArrayList<OutFile>()
-        chosen.forEach { out.add(OutFile(it.uri, it.name, "", it.modified)) }
+        chosen.forEach {
+            out.add(OutFile(it.uri, it.name, "", if (keepDates) it.modified else 0L))
+        }
         extraUris.forEach { out.add(OutFile(it, "", "")) }
         if (out.isEmpty()) {
             status = "اختار ملف واحد على الأقل"
+            return
+        }
+        if (connected) {
+            if (doneCount + failedCount >= batchTotal) {
+                doneCount = 0
+                failedCount = 0
+                skippedCount = 0
+                batchTotal = 0
+            }
+            batch = batch + out
+            batchTotal += out.size
+            sending = true
+            status = "جاري الإرسال..."
+            sel = emptySet()
+            extraUris = emptyList()
+            sendStage = "connect"
+            manager.sendQueue(out)
         } else {
             batch = out
             batchTotal = out.size
@@ -521,6 +542,7 @@ fun HomeScreen() {
         folderKind = ""
         folderItems = null
         lists = emptyMap()
+        docsScan = null
         sel = emptySet()
         extraUris = emptyList()
         pickTab = "photos"
@@ -534,7 +556,11 @@ fun HomeScreen() {
     }
 
     fun goBack() {
-        if (screen == "send" && sendStage == "cloneKindPick") {
+        if (screen == "send" && sendStage == "pick" && connected) {
+            sel = emptySet()
+            extraUris = emptyList()
+            sendStage = "connect"
+        } else if (screen == "send" && sendStage == "cloneKindPick") {
             sel = emptySet()
             sendStage = "cloneSelect"
         } else if (screen == "send" && sendStage == "connect" && !connected) {
@@ -548,16 +574,6 @@ fun HomeScreen() {
             folderKind = ""
         } else {
             goHome()
-        }
-    }
-
-    val filePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        if (uris.isNotEmpty()) {
-            batchTotal += uris.size
-            sending = true
-            manager.sendFiles(uris)
         }
     }
 
@@ -590,6 +606,8 @@ fun HomeScreen() {
             skippedCount = 0
             batchTotal = batch.size
             sending = true
+            sel = emptySet()
+            extraUris = emptyList()
             status = "جاري الإرسال..."
             manager.sendQueue(batch)
         }
@@ -604,16 +622,22 @@ fun HomeScreen() {
         }
     }
 
-    LaunchedEffect(pickTab, permsVersion, screen, sendStage) {
+    LaunchedEffect(pickTab, permsVersion, screen, sendStage, allFiles) {
         val tab = pickTab
         val inPicker = screen == "send" && (sendStage == "pick" || sendStage == "cloneKindPick")
-        if (inPicker && tab != "other" && lists[tab] == null &&
-            MediaReader.hasAccess(context, tab)
-        ) {
-            val r = withContext(Dispatchers.IO) {
-                MediaReader.readAll(context, tab).sortedByDescending { it.modified }
+        if (inPicker) {
+            if (tab == "other") {
+                if (lists["other"] == null || docsScan != allFiles) {
+                    val r = withContext(Dispatchers.IO) { DocsReader.readDocs(context) }
+                    lists = lists + ("other" to r)
+                    docsScan = allFiles
+                }
+            } else if (lists[tab] == null && MediaReader.hasAccess(context, tab)) {
+                val r = withContext(Dispatchers.IO) {
+                    MediaReader.readAll(context, tab).sortedByDescending { it.modified }
+                }
+                lists = lists + (tab to r)
             }
-            lists = lists + (tab to r)
         }
     }
 
@@ -647,6 +671,7 @@ fun HomeScreen() {
             totalSelected = if (isKindPick) sel.size else sel.size + extraUris.size,
             extraCount = extraUris.size,
             confirmLabel = if (isKindPick) "تم" else "إرسال",
+            docsNeedAccess = pickTab == "other" && Build.VERSION.SDK_INT >= 30 && !allFiles,
             onToggle = { item ->
                 val k = item.uri.toString()
                 sel = if (k in sel) sel - k else sel + k
@@ -655,6 +680,7 @@ fun HomeScreen() {
             onClear = { list -> sel = sel - list.map { it.uri.toString() }.toSet() },
             onPickOther = { otherPicker.launch(arrayOf("*/*")) },
             onOpenSettings = { openSettings() },
+            onOpenAllFiles = { openAllFiles() },
             onRefresh = { permsVersion++ },
             onBack = { goBack() },
             onConfirm = { if (isKindPick) confirmKindPick() else confirmPick() }
@@ -1010,7 +1036,11 @@ fun HomeScreen() {
                                         Spacer(modifier = Modifier.height(12.dp))
                                     }
                                     OutlinedButton(
-                                        onClick = { filePicker.launch(arrayOf("*/*")) },
+                                        onClick = {
+                                            sel = emptySet()
+                                            extraUris = emptyList()
+                                            sendStage = "pick"
+                                        },
                                         shape = RoundedCornerShape(20.dp),
                                         modifier = Modifier
                                             .fillMaxWidth()
