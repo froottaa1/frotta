@@ -30,6 +30,16 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.concurrent.Executors
 
+private const val DOCS_PREFIX = "__frotta_docs"
+
+private fun isDocFolder(folder: String): Boolean {
+    return folder == DOCS_PREFIX || folder.startsWith("$DOCS_PREFIX/")
+}
+
+private fun docRealFolder(folder: String): String {
+    return folder.removePrefix(DOCS_PREFIX).trim('/')
+}
+
 data class TransferItem(
     val id: Long,
     val name: String,
@@ -40,7 +50,8 @@ data class TransferItem(
     val failed: Boolean,
     val note: String = "",
     val skipped: Boolean = false,
-    val isApp: Boolean = false
+    val isApp: Boolean = false,
+    val isDoc: Boolean = false
 )
 
 data class OutFile(
@@ -343,6 +354,7 @@ class NearbyManager(
                 val folder = rel.substringBeforeLast('/', "")
                 if (name.startsWith("__frotta_") || size <= 0) return
                 val isApp = folder.startsWith("__frotta_apps/")
+                val isDoc = isDocFolder(folder)
 
                 checker.execute {
                     var installed = false
@@ -353,6 +365,8 @@ class NearbyManager(
                         val f = appFile(folder, name)
                         fileHave = f.exists() && f.length() == size
                         installed || fileHave
+                    } else if (isDoc) {
+                        haveDoc(name, docRealFolder(folder), size)
                     } else {
                         alreadyHave(name, folder, size)
                     }
@@ -367,7 +381,8 @@ class NearbyManager(
                                 )
                                 onTransfer(
                                     TransferItem(
-                                        id, name, false, size, size, true, false, rel, true, isApp
+                                        id, name, false, size, size, true, false,
+                                        rel, true, isApp, isDoc
                                     )
                                 )
                                 if (isApp && fileHave && !installed) {
@@ -464,16 +479,27 @@ class NearbyManager(
             return
         }
 
+        val doc = isDocFolder(folder)
+        val realFolder = if (doc) docRealFolder(folder) else folder
+
         saver.execute {
-            val r = if (total > 0 && alreadyHave(name, folder, total)) {
+            val exists = if (total > 0) {
+                if (doc) haveDoc(name, realFolder, total) else alreadyHave(name, folder, total)
+            } else {
+                false
+            }
+            val r = if (exists) {
                 SaveResult(true, rel, true)
             } else {
-                saveFile(payload, name, folder, mtime)
+                saveFile(payload, name, realFolder, mtime, doc)
             }
             mainHandler.post {
                 cleanupIncoming(id)
                 onTransfer(
-                    TransferItem(id, name, false, total, total, r.ok, !r.ok, r.note, r.skipped)
+                    TransferItem(
+                        id, name, false, total, total, r.ok, !r.ok,
+                        r.note, r.skipped, false, doc
+                    )
                 )
                 if (r.ok && !r.skipped) onStatus("تم حفظ: $name")
             }
@@ -503,7 +529,14 @@ class NearbyManager(
     }
 
     @Suppress("DEPRECATION")
+    private fun docDir(folder: String): File {
+        val root = Environment.getExternalStorageDirectory()
+        return if (folder.isEmpty()) root else File(root, folder)
+    }
+
+    @Suppress("DEPRECATION")
     private fun directDir(kind: String, folder: String): File {
+        if (kind == "docs") return docDir(folder)
         val root = Environment.getExternalStorageDirectory()
         val rel = when {
             kind == "other" ->
@@ -528,6 +561,14 @@ class NearbyManager(
             haveDirect(directDir(kind, folder), name, size)
         } else {
             existsScoped(kind, name, folder, size)
+        }
+    }
+
+    private fun haveDoc(name: String, folder: String, size: Long): Boolean {
+        return if (useDirect()) {
+            haveDirect(docDir(folder), name, size)
+        } else {
+            existsScoped("docs", name, folder, size)
         }
     }
 
@@ -583,7 +624,7 @@ class NearbyManager(
             "audio" -> listOf("Music", "Alarms", "Notifications", "Podcasts", "Ringtones", "Audiobooks")
             else -> emptyList()
         }
-        if (kind == "other") {
+        if (kind == "other" || kind == "docs") {
             return if (folder.isEmpty()) "Download/Frotta" else "Download/Frotta/$folder"
         }
         val top = folder.substringBefore('/')
@@ -596,10 +637,16 @@ class NearbyManager(
         }
     }
 
-    private fun saveFile(payload: Payload, name: String, folder: String, mtime: Long): SaveResult {
+    private fun saveFile(
+        payload: Payload,
+        name: String,
+        folder: String,
+        mtime: Long,
+        doc: Boolean
+    ): SaveResult {
         val pfd = payload.asFile()?.asParcelFileDescriptor()
             ?: return SaveResult(false, "تعذر قراءة الملف المستلم")
-        val kind = mediaKindOf(name)
+        val kind = if (doc) "docs" else mediaKindOf(name)
         return try {
             ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input ->
                 if (useDirect()) {
