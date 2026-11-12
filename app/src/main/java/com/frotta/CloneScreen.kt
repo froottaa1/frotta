@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Contacts
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Sms
@@ -58,6 +59,7 @@ val cloneCategories = listOf(
     CloneCategory("photos", "الصور", "بنفس ترتيب المعرض", Icons.Rounded.Image),
     CloneCategory("videos", "الفيديوهات", "بنفس الفولدرات", Icons.Rounded.Videocam),
     CloneCategory("audio", "الصوتيات", "موسيقى وتسجيلات", Icons.Rounded.MusicNote),
+    CloneCategory("docs", "المستندات", "PDF وWord وExcel وDWG بمساراتها", Icons.Rounded.Description),
     CloneCategory("contacts", "الأسماء", "جهات الاتصال", Icons.Rounded.Contacts),
     CloneCategory("calls", "سجل المكالمات", "بالتواريخ والمدد", Icons.Rounded.Call),
     CloneCategory("sms", "الرسائل", "بتواريخها واتجاهها", Icons.Rounded.Sms),
@@ -161,7 +163,7 @@ fun CloneSelectScreen(
                     )
                 }
 
-                if (isOn && (cat.key in mediaKeys || cat.key == "apps")) {
+                if (isOn && (cat.key in mediaKeys || cat.key == "apps" || cat.key == "docs")) {
                     Spacer(modifier = Modifier.height(10.dp))
                     val mode = modes[cat.key] ?: "all"
                     val picked = pickedCount[cat.key] ?: 0
@@ -185,7 +187,7 @@ fun CloneSelectScreen(
         }
 
         Text(
-            text = "التطبيقات بتتنقل كملفات تثبيت بس، من غير بياناتها أو حساباتها. لو مش عايز كل التطبيقات، دوس \"اختيار\" وحدد اللي تحبه.",
+            text = "التطبيقات بتتنقل كملفات تثبيت بس، من غير بياناتها أو حساباتها. والمستندات بترجع لنفس مساراتها لو الهاتف الجديد مفعّل الوصول لكل الملفات.",
             fontSize = 12.sp,
             color = CInk
         )
@@ -330,7 +332,7 @@ fun CloneRestoreScreen(counts: Map<String, Int> = emptyMap()) {
             color = CInk
         )
         Text(
-            text = "الملفات بتتحفظ في المعرض بنفس مجلداتها",
+            text = "الملفات بتتحفظ في نفس مجلداتها",
             fontSize = 14.sp,
             color = CInk
         )
@@ -340,7 +342,7 @@ fun CloneRestoreScreen(counts: Map<String, Int> = emptyMap()) {
             val got = counts.containsKey(cat.key)
             val n = counts[cat.key] ?: 0
             val unit = when {
-                cat.key in mediaKeys -> "ملف"
+                cat.key in mediaKeys || cat.key == "docs" -> "ملف"
                 cat.key == "apps" -> "تطبيق"
                 cat.key == "sms" -> "رسالة"
                 else -> "عنصر"
