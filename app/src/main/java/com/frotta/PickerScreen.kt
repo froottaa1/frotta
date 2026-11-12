@@ -1,5 +1,6 @@
 package com.frotta
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
@@ -46,12 +48,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -59,10 +64,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val PInk = Color(0xFF111111)
 private val PYellow = Color(0xFFFFD600)
@@ -76,6 +84,10 @@ val pickerTabs = listOf(
     PickerTab("audio", "الصوتيات", Icons.Rounded.MusicNote),
     PickerTab("other", "ملفات أخرى", Icons.Rounded.InsertDriveFile)
 )
+
+val appsTab = PickerTab("apps", "التطبيقات", Icons.Rounded.Apps)
+
+val allPickerTabs = pickerTabs + appsTab
 
 private fun pkSize(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"
@@ -159,6 +171,37 @@ private fun DocsAccessCard(onClick: () -> Unit) {
 }
 
 @Composable
+private fun AppIcon(pkg: String, modifier: Modifier) {
+    val context = LocalContext.current
+    val bmp by produceState<ImageBitmap?>(initialValue = null, key1 = pkg) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                context.packageManager.getApplicationIcon(pkg).toBitmap(96, 96).asImageBitmap()
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        val b = bmp
+        if (b != null) {
+            Image(
+                bitmap = b,
+                contentDescription = null,
+                modifier = Modifier.size(40.dp)
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Rounded.Apps,
+                contentDescription = null,
+                tint = PInk,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun Thumb(item: MediaItem, kind: String, loader: ImageLoader, modifier: Modifier) {
     if (kind == "audio") {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
@@ -169,6 +212,8 @@ private fun Thumb(item: MediaItem, kind: String, loader: ImageLoader, modifier: 
                 modifier = Modifier.size(32.dp)
             )
         }
+    } else if (kind == "apps") {
+        AppIcon(item.folder, modifier)
     } else if (kind == "other") {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
             Text(
@@ -352,7 +397,7 @@ fun PickerScreen(
         }
     }
     val list = shown ?: emptyList()
-    val useGrid = gridMode && currentTab != "other"
+    val useGrid = gridMode && currentTab != "other" && currentTab != "apps"
 
     Column(
         modifier = Modifier
@@ -414,7 +459,7 @@ fun PickerScreen(
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = list.size.toString() + " ملف",
+                text = list.size.toString() + if (currentTab == "apps") " تطبيق" else " ملف",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = PInk,
@@ -483,7 +528,11 @@ fun PickerScreen(
                 }
                 shown == null -> {
                     Text(
-                        text = if (currentTab == "other") "جاري البحث عن المستندات..." else "جاري التحميل...",
+                        text = when (currentTab) {
+                            "other" -> "جاري البحث عن المستندات..."
+                            "apps" -> "جاري تحميل التطبيقات..."
+                            else -> "جاري التحميل..."
+                        },
                         fontSize = 14.sp,
                         color = PInk,
                         modifier = Modifier.align(Alignment.Center)
@@ -491,10 +540,10 @@ fun PickerScreen(
                 }
                 list.isEmpty() -> {
                     Text(
-                        text = if (currentTab == "other") {
-                            "مفيش مستندات ظاهرة. فعّل الوصول لكل الملفات أو أضف يدوياً"
-                        } else {
-                            "مفيش ملفات"
+                        text = when (currentTab) {
+                            "other" -> "مفيش مستندات ظاهرة. فعّل الوصول لكل الملفات أو أضف يدوياً"
+                            "apps" -> "مفيش تطبيقات"
+                            else -> "مفيش ملفات"
                         },
                         fontSize = 14.sp,
                         color = PInk,
