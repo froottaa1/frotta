@@ -15,7 +15,8 @@ data class MediaItem(
     val uri: Uri,
     val name: String,
     val folder: String,
-    val size: Long
+    val size: Long,
+    val modified: Long
 )
 
 data class MediaFolder(
@@ -58,6 +59,7 @@ object MediaReader {
             MediaStore.MediaColumns._ID,
             MediaStore.MediaColumns.DISPLAY_NAME,
             MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.DATE_MODIFIED,
             pathColumn
         )
         val root = Environment.getExternalStorageDirectory().absolutePath
@@ -67,6 +69,7 @@ object MediaReader {
                 val idCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                 val nameCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                 val sizeCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                val modCol = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
                 val pathCol = c.getColumnIndexOrThrow(pathColumn)
                 while (c.moveToNext()) {
                     val name = c.getString(nameCol) ?: continue
@@ -81,7 +84,8 @@ object MediaReader {
                             ContentUris.withAppendedId(base, c.getLong(idCol)),
                             name,
                             folder,
-                            c.getLong(sizeCol)
+                            c.getLong(sizeCol),
+                            c.getLong(modCol) * 1000L
                         )
                     )
                 }
