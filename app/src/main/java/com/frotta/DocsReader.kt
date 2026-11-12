@@ -25,6 +25,12 @@ object DocsReader {
         "ttf", "otf", "bak", "db", "sql", "xps"
     )
 
+    private val noisy = setOf(
+        "xml", "json", "html", "htm", "log", "db", "sql", "bak", "ttf", "otf", "md", "svg"
+    )
+
+    val coreExtensions: Set<String> = extensions - noisy
+
     @Suppress("DEPRECATION")
     private fun canWalk(context: Context): Boolean {
         if (Build.VERSION.SDK_INT >= 30) return Environment.isExternalStorageManager()
@@ -35,7 +41,7 @@ object DocsReader {
     }
 
     @Suppress("DEPRECATION")
-    private fun walk(): List<MediaItem> {
+    private fun walk(exts: Set<String>): List<MediaItem> {
         val root = Environment.getExternalStorageDirectory()
         val rootPath = root.absolutePath
         val out = ArrayList<MediaItem>()
@@ -63,7 +69,7 @@ object DocsReader {
                     stack.addLast(f)
                 } else {
                     val ext = name.substringAfterLast('.', "").lowercase()
-                    if (ext in extensions) {
+                    if (ext in exts) {
                         val folder = (f.parent ?: "")
                             .removePrefix(rootPath)
                             .replace('\\', '/')
@@ -85,7 +91,7 @@ object DocsReader {
     }
 
     @Suppress("DEPRECATION")
-    private fun queryStore(context: Context): List<MediaItem> {
+    private fun queryStore(context: Context, exts: Set<String>): List<MediaItem> {
         val out = ArrayList<MediaItem>()
         val base = MediaStore.Files.getContentUri("external")
         val pathColumn = if (Build.VERSION.SDK_INT >= 29) {
@@ -118,7 +124,7 @@ object DocsReader {
                 while (c.moveToNext()) {
                     val name = c.getString(nameCol) ?: continue
                     val ext = name.substringAfterLast('.', "").lowercase()
-                    if (ext !in extensions) continue
+                    if (ext !in exts) continue
                     val raw = c.getString(pathCol) ?: ""
                     val folder = if (Build.VERSION.SDK_INT >= 29) {
                         raw
@@ -141,9 +147,10 @@ object DocsReader {
         return out
     }
 
-    fun readDocs(context: Context): List<MediaItem> {
+    fun readDocs(context: Context, core: Boolean = false): List<MediaItem> {
+        val exts = if (core) coreExtensions else extensions
         val list = try {
-            if (canWalk(context)) walk() else queryStore(context)
+            if (canWalk(context)) walk(exts) else queryStore(context, exts)
         } catch (e: Exception) {
             emptyList()
         }
