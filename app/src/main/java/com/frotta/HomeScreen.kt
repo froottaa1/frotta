@@ -233,6 +233,15 @@ fun HomeScreen() {
     var smsPrev by remember { mutableStateOf<String?>(null) }
     var smsIsDefault by remember { mutableStateOf(SmsSync.isDefault(context)) }
 
+    var appMeta by remember { mutableStateOf<Map<String, Pair<String, Int>>>(emptyMap()) }
+    var appsFiles by remember { mutableStateOf<Map<String, List<File>>>(emptyMap()) }
+    var installedApps by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var installErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var installQueue by remember { mutableStateOf<List<String>>(emptyList()) }
+    var installing by remember { mutableStateOf<String?>(null) }
+    var installStart by remember { mutableStateOf(0L) }
+    var canInstallApps by remember { mutableStateOf(AppInstaller.canInstall(context)) }
+
     var status by remember { mutableStateOf("") }
     var permDenied by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(false) }
@@ -296,6 +305,15 @@ fun HomeScreen() {
             askSmsRole(file)
             return
         }
+        if (kind == "apps") {
+            scope.launch {
+                val m = withContext(Dispatchers.IO) { AppsReader.parseMeta(file) }
+                appMeta = appMeta + m
+                received = received + ("apps" to appMeta.size)
+                status = "وصلت قايمة التطبيقات: ${m.size}"
+            }
+            return
+        }
         scope.launch {
             val n = withContext(Dispatchers.IO) { DataSync.import(context, kind, file) }
             val title = cloneCategories.first { it.key == kind }.title
@@ -338,7 +356,7 @@ fun HomeScreen() {
                         doneCount++
                     } else if (!item.skipped) {
                         val k = mediaKindOf(item.name)
-                        if (k != "data") {
+                        if (k != "data" && !item.isApp) {
                             received = received + (k to ((received[k] ?: 0) + 1))
                         }
                         if (item.note.isNotEmpty()) lastSaved = item.note
@@ -353,7 +371,13 @@ fun HomeScreen() {
                     transfers.add(0, item)
                 }
             },
-            onDataFile = { kind, file -> runImport(kind, file) }
+            onDataFile = { kind, file -> runImport(kind, file) },
+            onAppFile = { pkg, file ->
+                val cur = appsFiles[pkg] ?: emptyList()
+                if (cur.none { it.name == file.name }) {
+                    appsFiles = appsFiles + (pkg to (cur + file))
+                }
+            }
         )
     }
 
@@ -380,6 +404,19 @@ fun HomeScreen() {
         }
     }
 
+    fun openUnknownSources() {
+        try {
+            val i = Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:" + context.packageName)
+            )
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(i)
+        } catch (e: Exception) {
+            openSettings()
+        }
+    }
+
     fun openAllFiles() {
         try {
             val i = Intent(
@@ -395,6 +432,25 @@ fun HomeScreen() {
                 context.startActivity(i2)
             } catch (e2: Exception) {
                 openSettings()
+            }
+        }
+    }
+
+    fun startInstall(pkg: String) {
+        val files = appsFiles[pkg] ?: emptyList()
+        val need = appMeta[pkg]?.second ?: 0
+        if (files.isEmpty() || files.size < need) {
+            installErrors = installErrors + (pkg to "لسه مستلمش كل ملفات التطبيق")
+            return
+        }
+        installErrors = installErrors - pkg
+        installing = pkg
+        installStart = System.currentTimeMillis()
+        scope.launch {
+            val err = withContext(Dispatchers.IO) { AppInstaller.install(context, pkg, files) }
+            if (err != null) {
+                installErrors = installErrors + (pkg to err)
+                installing = null
             }
         }
     }
@@ -556,6 +612,27 @@ fun HomeScreen() {
                     }
                 }
 
+                if ("apps" in selected) {
+                    val all = AppsReader.readApps(context)
+                    val chosen = if ((modes["apps"] ?: "all") == "pick") {
+                        val keys = (pickedItems["apps"] ?: emptyList()).map { it.folder }.toSet()
+                        all.filter { it.pkg in keys }
+                    } else {
+                        all
+                    }
+                    if (chosen.isEmpty()) {
+                        skipped.add("التطبيقات")
+                    } else {
+                        val meta = AppsReader.exportMeta(context, chosen)
+                        if (meta != null) {
+                            list.add(OutFile(Uri.fromFile(meta), meta.name, ""))
+                            list.addAll(AppsReader.outFiles(chosen))
+                        } else {
+                            skipped.add("التطبيقات")
+                        }
+                    }
+                }
+
                 for (kind in listOf("photos", "videos", "audio")) {
                     if (kind !in selected) continue
                     val mode = modes[kind] ?: "all"
@@ -581,7 +658,7 @@ fun HomeScreen() {
             val note = if (skipped.isEmpty()) {
                 ""
             } else {
-                "  (اتخطّى: " + skipped.joinToString("، ") + " بسبب الصلاحيات)"
+                "  (اتخطّى: " + skipped.joinToString("، ") + ")"
             }
             if (out.isEmpty()) {
                 status = "مفيش حاجة للإرسال. تأكد من الصلاحيات والاختيار" + note
@@ -610,6 +687,11 @@ fun HomeScreen() {
         received = emptyMap()
         pendingData = emptyList()
         smsPending = null
+        appMeta = emptyMap()
+        appsFiles = emptyMap()
+        installQueue = emptyList()
+        installErrors = emptyMap()
+        installing = null
         modes = emptyMap()
         pickedItems = emptyMap()
         chosenFolders = emptyMap()
@@ -674,6 +756,48 @@ fun HomeScreen() {
         }
     }
 
+    LaunchedEffect(Unit) {
+        while (true) {
+            canInstallApps = AppInstaller.canInstall(context)
+            val pkgs = appMeta.keys + appsFiles.keys
+            if (pkgs.isNotEmpty()) {
+                val now = pkgs.filter { AppInstaller.isInstalled(context, it) }.toSet()
+                installedApps = now
+
+                val toClean = now.filter { appsFiles.containsKey(it) }
+                if (toClean.isNotEmpty()) {
+                    withContext(Dispatchers.IO) {
+                        toClean.forEach {
+                            File(File(context.filesDir, "apps"), it).deleteRecursively()
+                        }
+                    }
+                    appsFiles = appsFiles - toClean.toSet()
+                }
+
+                val cur = installing
+                if (cur != null) {
+                    val r = InstallLog.take(cur)
+                    if (cur in now) {
+                        installing = null
+                    } else if (r != null && !r.ok) {
+                        installErrors = installErrors + (cur to r.message)
+                        installing = null
+                    } else if (System.currentTimeMillis() - installStart > 180000L) {
+                        installErrors = installErrors + (cur to "انتهت مهلة التثبيت")
+                        installing = null
+                    }
+                }
+
+                if (installing == null && installQueue.isNotEmpty()) {
+                    val next = installQueue.first()
+                    installQueue = installQueue.drop(1)
+                    if (next !in now) startInstall(next)
+                }
+            }
+            delay(1000)
+        }
+    }
+
     LaunchedEffect(connected) {
         if (connected && screen == "send" && batch.isNotEmpty()) {
             doneCount = 0
@@ -707,6 +831,13 @@ fun HomeScreen() {
                     lists = lists + ("other" to r)
                     docsScan = allFiles
                 }
+            } else if (tab == "apps") {
+                if (lists["apps"] == null) {
+                    val r = withContext(Dispatchers.IO) {
+                        AppsReader.toItems(AppsReader.readApps(context))
+                    }
+                    lists = lists + ("apps" to r)
+                }
             } else if (lists[tab] == null && MediaReader.hasAccess(context, tab)) {
                 val r = withContext(Dispatchers.IO) {
                     MediaReader.readAll(context, tab).sortedByDescending { it.modified }
@@ -724,20 +855,33 @@ fun HomeScreen() {
         folderItems?.let { MediaReader.folders(it) }
     }
 
+    val appRows = remember(appMeta, appsFiles, installedApps, installErrors, installing) {
+        appMeta.map { (pkg, v) ->
+            AppRow(
+                pkg = pkg,
+                label = v.first,
+                ready = v.second > 0 && (appsFiles[pkg]?.size ?: 0) >= v.second,
+                installed = pkg in installedApps,
+                error = installErrors[pkg] ?: "",
+                installing = installing == pkg
+            )
+        }.sortedBy { it.label.lowercase() }
+    }
+
     BackHandler(enabled = screen != "home") { goBack() }
 
     if (screen == "send" && (sendStage == "pick" || sendStage == "cloneKindPick")) {
         val isKindPick = sendStage == "cloneKindPick"
         val access = remember(permsVersion, pickTab) {
-            pickTab == "other" || MediaReader.hasAccess(context, pickTab)
+            pickTab == "other" || pickTab == "apps" || MediaReader.hasAccess(context, pickTab)
         }
         PickerScreen(
             title = if (isKindPick) {
-                pickerTabs.firstOrNull { it.key == pickTab }?.title ?: ""
+                allPickerTabs.firstOrNull { it.key == pickTab }?.title ?: ""
             } else {
                 "اختيار الملفات"
             },
-            tabs = if (isKindPick) pickerTabs.filter { it.key == pickTab } else pickerTabs,
+            tabs = if (isKindPick) allPickerTabs.filter { it.key == pickTab } else pickerTabs,
             currentTab = pickTab,
             onTab = { pickTab = it },
             files = lists[pickTab],
@@ -1168,7 +1312,8 @@ fun HomeScreen() {
                                         val total = received
                                             .filterKeys {
                                                 it != "contacts" && it != "calls" &&
-                                                    it != "calendar" && it != "sms"
+                                                    it != "calendar" && it != "sms" &&
+                                                    it != "apps"
                                             }
                                             .values.sum()
                                         Text(
@@ -1197,6 +1342,26 @@ fun HomeScreen() {
                                     }
                                 }
                             }
+                        }
+
+                        if (s == "receive" && cloneMode && appRows.isNotEmpty()) {
+                            AppsInstallCard(
+                                rows = appRows,
+                                canInstall = canInstallApps,
+                                onAllowInstall = { openUnknownSources() },
+                                onInstallAll = {
+                                    installQueue = appRows
+                                        .filter { it.ready && !it.installed && !it.installing }
+                                        .map { it.pkg }
+                                },
+                                onInstallOne = { pkg ->
+                                    if (installing == null) {
+                                        startInstall(pkg)
+                                    } else if (pkg !in installQueue) {
+                                        installQueue = installQueue + pkg
+                                    }
+                                }
+                            )
                         }
 
                         transfers.forEach { item ->
