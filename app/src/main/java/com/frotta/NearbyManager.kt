@@ -39,7 +39,8 @@ data class TransferItem(
     val done: Boolean,
     val failed: Boolean,
     val note: String = "",
-    val skipped: Boolean = false
+    val skipped: Boolean = false,
+    val isApp: Boolean = false
 )
 
 data class OutFile(
@@ -75,7 +76,8 @@ class NearbyManager(
     private val onConnected: () -> Unit,
     private val onDisconnected: () -> Unit,
     private val onTransfer: (TransferItem) -> Unit,
-    private val onDataFile: (String, File) -> Unit = { _, _ -> }
+    private val onDataFile: (String, File) -> Unit = { _, _ -> },
+    private val onAppFile: (String, File) -> Unit = { _, _ -> }
 ) {
     private val appContext = context.applicationContext
     private val client: ConnectionsClient = Nearby.getConnectionsClient(appContext)
@@ -318,6 +320,11 @@ class NearbyManager(
         resetTransfers()
     }
 
+    private fun appFile(folder: String, name: String): File {
+        val pkg = folder.removePrefix("__frotta_apps/").substringBefore('/')
+        return File(File(File(appContext.filesDir, "apps"), pkg), name)
+    }
+
     private fun handleControl(endpointId: String, text: String) {
         val p = text.split('\t', limit = 5)
         if (p.size < 2) return
@@ -335,9 +342,20 @@ class NearbyManager(
                 val name = rel.substringAfterLast('/')
                 val folder = rel.substringBeforeLast('/', "")
                 if (name.startsWith("__frotta_") || size <= 0) return
+                val isApp = folder.startsWith("__frotta_apps/")
 
                 checker.execute {
-                    val have = alreadyHave(name, folder, size)
+                    var installed = false
+                    var fileHave = false
+                    val have = if (isApp) {
+                        val pkg = folder.removePrefix("__frotta_apps/").substringBefore('/')
+                        installed = AppInstaller.isInstalled(appContext, pkg)
+                        val f = appFile(folder, name)
+                        fileHave = f.exists() && f.length() == size
+                        installed || fileHave
+                    } else {
+                        alreadyHave(name, folder, size)
+                    }
                     if (have) {
                         mainHandler.post {
                             if (finishedIn.add(id)) {
@@ -348,8 +366,14 @@ class NearbyManager(
                                     Payload.fromBytes("S\t$id".toByteArray(Charsets.UTF_8))
                                 )
                                 onTransfer(
-                                    TransferItem(id, name, false, size, size, true, false, rel, true)
+                                    TransferItem(
+                                        id, name, false, size, size, true, false, rel, true, isApp
+                                    )
                                 )
+                                if (isApp && fileHave && !installed) {
+                                    val pkg = folder.removePrefix("__frotta_apps/").substringBefore('/')
+                                    onAppFile(pkg, appFile(folder, name))
+                                }
                             }
                         }
                     }
@@ -405,6 +429,26 @@ class NearbyManager(
         val mtime = fileMtimes[id] ?: 0L
         val total = payload.asFile()?.size ?: 0L
         onTransfer(TransferItem(id, name, false, total, total, false, false))
+
+        if (folder.startsWith("__frotta_apps/")) {
+            val pkg = folder.removePrefix("__frotta_apps/").substringBefore('/')
+            saver.execute {
+                val target = appFile(folder, name)
+                target.parentFile?.mkdirs()
+                val ok = copyToFile(payload, target)
+                mainHandler.post {
+                    cleanupIncoming(id)
+                    onTransfer(
+                        TransferItem(
+                            id, name, false, total, total, ok, !ok,
+                            if (ok) "" else "تعذر حفظ ملف التطبيق", false, true
+                        )
+                    )
+                    if (ok) onAppFile(pkg, target)
+                }
+            }
+            return
+        }
 
         if (name.startsWith("__frotta_")) {
             val kind = name.removePrefix("__frotta_").substringBefore('.')
