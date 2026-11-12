@@ -55,6 +55,7 @@ import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
@@ -88,6 +89,7 @@ import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import java.io.File
 import java.security.SecureRandom
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -163,6 +165,12 @@ private fun formatSize(bytes: Long): String {
     return String.format("%.2f GB", mb / 1024)
 }
 
+private fun prettyName(name: String): String {
+    if (!name.startsWith("__frotta_")) return name
+    val key = name.removePrefix("__frotta_").substringBefore('.')
+    return cloneCategories.firstOrNull { it.key == key }?.title ?: name
+}
+
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
@@ -182,17 +190,43 @@ fun HomeScreen() {
     var cloneTotal by remember { mutableStateOf(0) }
     var cloneDone by remember { mutableStateOf(0) }
     var cloneFailed by remember { mutableStateOf(0) }
+    var skippedCount by remember { mutableStateOf(0) }
+    var lastSaved by remember { mutableStateOf("") }
     var received by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var pendingData by remember { mutableStateOf<List<Pair<String, File>>>(emptyList()) }
 
     var status by remember { mutableStateOf("") }
     var permDenied by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(false) }
+    var needRestart by remember { mutableStateOf(false) }
+    var allFiles by remember { mutableStateOf(hasAllFilesAccess()) }
     var searching by remember { mutableStateOf(false) }
     var token by remember { mutableStateOf("") }
     var showManual by remember { mutableStateOf(false) }
     var manualCode by remember { mutableStateOf("") }
     val transfers = remember { mutableStateListOf<TransferItem>() }
     val myName = remember { Build.MODEL }
+
+    fun runImport(kind: String, file: File) {
+        scope.launch {
+            val n = withContext(Dispatchers.IO) { DataSync.import(context, kind, file) }
+            val title = cloneCategories.first { it.key == kind }.title
+            if (n >= 0) {
+                received = received + (kind to n)
+                pendingData = pendingData.filterNot { it.first == kind }
+                status = "تم استرداد $title: $n"
+            } else if (n == -1) {
+                if (pendingData.none { it.first == kind }) {
+                    pendingData = pendingData + (kind to file)
+                }
+                status = "اسمح بصلاحيات $title وهيتكمل الاسترداد تلقائي"
+            } else if (n == -3) {
+                status = "مفيش تقويم قابل للكتابة على الهاتف ده"
+            } else {
+                status = "تعذر استرداد $title"
+            }
+        }
+    }
 
     val manager = remember {
         NearbyManager(
@@ -202,20 +236,29 @@ fun HomeScreen() {
                 connected = true
                 searching = false
             },
-            onDisconnected = { connected = false },
+            onDisconnected = {
+                connected = false
+                cloneRunning = false
+                status = "انقطع الاتصال. أعد الاتصال وابدأ تاني، والملفات اللي وصلت هتتخطى"
+                needRestart = true
+            },
             onTransfer = { item ->
                 val i = transfers.indexOfFirst { it.id == item.id }
                 if (cloneMode) {
                     if (item.done) {
+                        if (item.skipped) skippedCount++
                         if (item.sending) {
                             cloneDone++
-                        } else {
+                        } else if (!item.skipped) {
                             val k = mediaKindOf(item.name)
-                            received = received + (k to ((received[k] ?: 0) + 1))
+                            if (k != "data") {
+                                received = received + (k to ((received[k] ?: 0) + 1))
+                            }
+                            if (item.note.isNotEmpty()) lastSaved = item.note
                         }
                     }
                     if (item.failed && item.sending) cloneFailed++
-                    if (item.done || item.failed) {
+                    if (item.done || (item.failed && item.sending)) {
                         if (i >= 0) transfers.removeAt(i)
                     } else if (i >= 0) {
                         transfers[i] = item
@@ -223,14 +266,38 @@ fun HomeScreen() {
                         transfers.add(0, item)
                     }
                 } else {
-                    if (i >= 0) transfers[i] = item else transfers.add(0, item)
+                    if (item.skipped) skippedCount++
+                    if (i >= 0) {
+                        transfers[i] = item
+                    } else {
+                        transfers.add(0, item)
+                    }
                 }
-            }
+            },
+            onDataFile = { kind, file -> runImport(kind, file) }
         )
     }
 
     DisposableEffect(Unit) {
         onDispose { manager.stopAll() }
+    }
+
+    LaunchedEffect(needRestart) {
+        if (needRestart) {
+            needRestart = false
+            if (screen == "receive") {
+                val t = newToken()
+                token = t
+                manager.startReceiving(myName, t)
+            }
+        }
+    }
+
+    LaunchedEffect(screen) {
+        while (true) {
+            allFiles = hasAllFilesAccess()
+            delay(1000)
+        }
     }
 
     val dataPermLauncher = rememberLauncherForActivityResult(
@@ -243,6 +310,8 @@ fun HomeScreen() {
         } else {
             "فيه ${denied.size} صلاحيات مترفضة. افتح الإعدادات وفعّلها"
         }
+        val retry = pendingData
+        retry.forEach { runImport(it.first, it.second) }
     }
 
     fun requestData(perms: Array<String>) {
@@ -259,6 +328,25 @@ fun HomeScreen() {
         )
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(i)
+    }
+
+    fun openAllFiles() {
+        try {
+            val i = Intent(
+                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:" + context.packageName)
+            )
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(i)
+        } catch (e: Exception) {
+            try {
+                val i2 = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                i2.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(i2)
+            } catch (e2: Exception) {
+                openSettings()
+            }
+        }
     }
 
     LaunchedEffect(connected) {
@@ -319,10 +407,28 @@ fun HomeScreen() {
         cloneRunning = true
         cloneDone = 0
         cloneFailed = 0
+        skippedCount = 0
         status = "جاري تجهيز الملفات..."
         scope.launch {
+            val skipped = ArrayList<String>()
             val out = withContext(Dispatchers.IO) {
                 val list = ArrayList<OutFile>()
+
+                for (kind in listOf("contacts", "calls", "calendar")) {
+                    if (kind !in selected) continue
+                    val title = cloneCategories.first { it.key == kind }.title
+                    if (!DataSync.hasPermission(context, kind, false)) {
+                        skipped.add(title)
+                        continue
+                    }
+                    val f = DataSync.export(context, kind)
+                    if (f != null) {
+                        list.add(OutFile(Uri.fromFile(f), f.name, ""))
+                    } else {
+                        skipped.add(title)
+                    }
+                }
+
                 for (kind in listOf("photos", "videos", "audio")) {
                     if (kind !in selected) continue
                     val mode = modes[kind] ?: "all"
@@ -336,17 +442,24 @@ fun HomeScreen() {
                         } else {
                             all
                         }
-                        src.forEach { list.add(OutFile(it.uri, it.name, it.folder)) }
+                        src.forEach {
+                            list.add(OutFile(it.uri, it.name, it.folder, it.modified))
+                        }
                     }
                 }
                 list
             }
             cloneTotal = out.size
+            val note = if (skipped.isEmpty()) {
+                ""
+            } else {
+                "  (اتخطّى: " + skipped.joinToString("، ") + " بسبب الصلاحيات)"
+            }
             if (out.isEmpty()) {
                 cloneRunning = false
-                status = "مفيش ملفات للإرسال. تأكد من الصلاحيات والاختيار"
+                status = "مفيش حاجة للإرسال. تأكد من الصلاحيات والاختيار" + note
             } else {
-                status = "جاري الإرسال..."
+                status = "جاري الإرسال..." + note
                 manager.sendQueue(out)
             }
         }
@@ -401,7 +514,10 @@ fun HomeScreen() {
         cloneTotal = 0
         cloneDone = 0
         cloneFailed = 0
+        skippedCount = 0
+        lastSaved = ""
         received = emptyMap()
+        pendingData = emptyList()
         modes = emptyMap()
         picked = emptyMap()
         chosenFolders = emptyMap()
@@ -458,7 +574,7 @@ fun HomeScreen() {
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     AppearIn(300) {
-                        BigCard(Icons.Rounded.FileDownload, "استقبال", "اعرض كود عشان الجهاز التاني يتصل") {
+                        BigCard(Icons.Rounded.FileDownload, "استقبال", "اعرض كود عشان الهاتف الآخر يتصل") {
                             cloneMode = false
                             screen = "receive"
                             permissionLauncher.launch(requiredPermissions())
@@ -519,6 +635,11 @@ fun HomeScreen() {
                         }
                     }
 
+                    if (s == "receive" && Build.VERSION.SDK_INT >= 30 && !allFiles) {
+                        AllFilesCard { openAllFiles() }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
                     if (permDenied) {
                         OutlinedButton(
                             onClick = { openSettings() },
@@ -554,7 +675,7 @@ fun HomeScreen() {
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "أو اكتب الكود ده في الجهاز التاني",
+                            text = "أو اكتب الكود ده في الهاتف الآخر",
                             color = Ink,
                             fontSize = 14.sp,
                             modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -673,7 +794,7 @@ fun HomeScreen() {
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
-                                    text = "تم الاتصال بالجهاز التاني",
+                                    text = "تم الاتصال",
                                     color = Yellow,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold
@@ -707,6 +828,14 @@ fun HomeScreen() {
                             if (s == "send" && cloneMode) {
                                 if (cloneRunning) {
                                     CloneProgressCard(cloneDone, cloneFailed, cloneTotal)
+                                    if (skippedCount > 0) {
+                                        Text(
+                                            text = "اتخطّى $skippedCount ملف موجود بالفعل عند الهاتف الآخر",
+                                            color = Ink,
+                                            fontSize = 13.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                    }
                                 } else if (folderKind.isNotEmpty()) {
                                     FolderPickerScreen(
                                         title = cloneCategories.first { it.key == folderKind }.title,
@@ -764,6 +893,22 @@ fun HomeScreen() {
 
                             if (s == "receive" && cloneMode) {
                                 CloneRestoreScreen(counts = received)
+                                if (skippedCount > 0) {
+                                    Text(
+                                        text = "تم تخطي $skippedCount ملف موجود بالفعل",
+                                        color = Ink,
+                                        fontSize = 13.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                }
+                                if (lastSaved.isNotEmpty()) {
+                                    Text(
+                                        text = "آخر ملف اتحفظ في: $lastSaved",
+                                        color = Ink,
+                                        fontSize = 12.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                }
                             }
                         }
                     }
@@ -774,6 +919,33 @@ fun HomeScreen() {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AllFilesCard(onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Ink)
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "عشان الصور والفيديوهات ترجع لنفس مجلداتها بالظبط، فعّل الوصول لكل الملفات (مرة واحدة)",
+            color = Yellow,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Button(
+            onClick = onClick,
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Yellow, contentColor = Ink),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("تفعيل", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -936,7 +1108,7 @@ private fun TransferRow(item: TransferItem) {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = item.name,
+                text = prettyName(item.name),
                 maxLines = 1,
                 color = Ink,
                 fontWeight = FontWeight.Bold,
@@ -945,34 +1117,50 @@ private fun TransferRow(item: TransferItem) {
         }
         Spacer(modifier = Modifier.height(8.dp))
         when {
-            item.failed -> Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Rounded.Error,
-                    contentDescription = null,
-                    tint = Color(0xFFB3261E),
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "فشل النقل",
-                    color = Color(0xFFB3261E),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            item.failed -> Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.Error,
+                        contentDescription = null,
+                        tint = Color(0xFFB3261E),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "فشل النقل",
+                        color = Color(0xFFB3261E),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                if (item.note.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = item.note, color = Ink, fontSize = 11.sp)
+                }
             }
-            item.done -> Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Rounded.CheckCircle,
-                    contentDescription = null,
-                    tint = Ink,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "تم  " + formatSize(item.total),
-                    color = Ink,
-                    fontSize = 13.sp
-                )
+            item.done -> Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.CheckCircle,
+                        contentDescription = null,
+                        tint = Ink,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (item.skipped) {
+                            "تم تخطيه (موجود بالفعل)"
+                        } else {
+                            "تم  " + formatSize(item.total)
+                        },
+                        color = Ink,
+                        fontSize = 13.sp
+                    )
+                }
+                if (!item.skipped && item.note.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = item.note, color = Ink, fontSize = 11.sp)
+                }
             }
             else -> {
                 LinearProgressIndicator(
