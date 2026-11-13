@@ -1,5 +1,6 @@
 package com.frotta
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,11 +41,13 @@ import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,6 +63,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -137,6 +141,24 @@ private fun TabChip(tab: PickerTab, active: Boolean, onClick: () -> Unit) {
         Text(
             text = tab.title,
             fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (active) PYellow else PInk
+        )
+    }
+}
+
+@Composable
+private fun ViewChip(label: String, active: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (active) PInk else PSoft)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        Text(
+            text = label,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
             color = if (active) PYellow else PInk
         )
@@ -354,6 +376,72 @@ private fun ListRow(
 }
 
 @Composable
+private fun FolderRow(
+    path: String,
+    items: List<MediaItem>,
+    selectedCount: Int,
+    kind: String,
+    loader: ImageLoader,
+    onOpen: () -> Unit,
+    onToggle: (Boolean) -> Unit
+) {
+    val label = path.substringAfterLast('/').ifEmpty { "الرئيسي" }
+    val state = when {
+        selectedCount == 0 -> ToggleableState.Off
+        selectedCount >= items.size -> ToggleableState.On
+        else -> ToggleableState.Indeterminate
+    }
+    val active = state != ToggleableState.Off
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (active) PInk else PSoft)
+            .clickable(onClick = onOpen)
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Thumb(
+            items.first(),
+            kind,
+            loader,
+            Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(PYellow)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (active) PYellow else PInk
+            )
+            Text(
+                text = path + "  ·  " + items.size + " ملف",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 11.sp,
+                color = if (active) PSoft else PInk
+            )
+        }
+        TriStateCheckbox(
+            state = state,
+            onClick = { onToggle(state != ToggleableState.On) },
+            colors = CheckboxDefaults.colors(
+                checkedColor = PYellow,
+                checkmarkColor = PInk,
+                uncheckedColor = if (active) PYellow else PInk
+            )
+        )
+    }
+}
+
+@Composable
 fun PickerScreen(
     title: String,
     tabs: List<PickerTab>,
@@ -369,6 +457,7 @@ fun PickerScreen(
     onToggle: (MediaItem) -> Unit,
     onSelectAll: (List<MediaItem>) -> Unit,
     onClear: (List<MediaItem>) -> Unit,
+    onFolderToggle: (String, List<MediaItem>, Boolean) -> Unit,
     onPickOther: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenAllFiles: () -> Unit,
@@ -386,6 +475,12 @@ fun PickerScreen(
     var searching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
 
+    val isMedia = currentTab == "photos" || currentTab == "videos" || currentTab == "audio"
+    var foldersView by remember(currentTab) { mutableStateOf(false) }
+    var openFolder by remember(currentTab) { mutableStateOf<String?>(null) }
+
+    BackHandler(enabled = openFolder != null) { openFolder = null }
+
     val shown = remember(files, query) {
         val l = files
         if (l == null) {
@@ -396,7 +491,26 @@ fun PickerScreen(
             l.filter { it.name.contains(query.trim(), ignoreCase = true) }
         }
     }
-    val list = shown ?: emptyList()
+
+    val inFolderList = isMedia && foldersView && openFolder == null
+    val inOpenFolder = isMedia && foldersView && openFolder != null
+
+    val groups: List<Map.Entry<String, List<MediaItem>>> =
+        remember(shown, inFolderList) {
+            if (inFolderList) {
+                (shown ?: emptyList()).groupBy { it.folder }
+                    .entries
+                    .sortedByDescending { it.value.size }
+            } else {
+                emptyList()
+            }
+        }
+
+    val current: List<MediaItem> = remember(shown, openFolder, inOpenFolder) {
+        val base = shown ?: emptyList()
+        if (inOpenFolder) base.filter { it.folder == openFolder } else base
+    }
+
     val useGrid = gridMode && currentTab != "other" && currentTab != "apps"
 
     Column(
@@ -407,7 +521,9 @@ fun PickerScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            RoundIcon(Icons.Rounded.ArrowForward, onBack)
+            RoundIcon(Icons.Rounded.ArrowForward) {
+                if (openFolder != null) openFolder = null else onBack()
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = title,
@@ -450,26 +566,82 @@ fun PickerScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        if (isMedia) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ViewChip("كل الملفات", !foldersView) {
+                    foldersView = false
+                    openFolder = null
+                }
+                ViewChip("المجلدات", foldersView) {
+                    foldersView = true
+                    openFolder = null
+                }
+            }
+            if (foldersView) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "المجلد اللي بتحدده بيتحفظ باسمه عند المستلم",
+                    fontSize = 11.sp,
+                    color = PInk
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
 
         if (currentTab == "other" && docsNeedAccess) {
             DocsAccessCard(onOpenAllFiles)
             Spacer(modifier = Modifier.height(10.dp))
         }
 
+        if (inOpenFolder) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { openFolder = null }) {
+                    Text("المجلدات ←", fontWeight = FontWeight.Bold)
+                }
+                Text(
+                    text = (openFolder ?: "").substringAfterLast('/').ifEmpty { "الرئيسي" },
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = PInk
+                )
+            }
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = list.size.toString() + if (currentTab == "apps") " تطبيق" else " ملف",
+                text = when {
+                    inFolderList -> groups.size.toString() + " مجلد"
+                    currentTab == "apps" -> current.size.toString() + " تطبيق"
+                    else -> current.size.toString() + " ملف"
+                },
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = PInk,
                 modifier = Modifier.weight(1f)
             )
-            if (list.isNotEmpty()) {
-                TextButton(onClick = { onSelectAll(list) }) {
+            if (current.isNotEmpty()) {
+                TextButton(onClick = {
+                    if (inFolderList) {
+                        groups.forEach { onFolderToggle(it.key, it.value, true) }
+                    } else if (inOpenFolder) {
+                        onFolderToggle(openFolder ?: "", current, true)
+                    } else {
+                        onSelectAll(current)
+                    }
+                }) {
                     Text("تحديد الكل", fontWeight = FontWeight.Bold)
                 }
-                TextButton(onClick = { onClear(list) }) {
+                TextButton(onClick = {
+                    if (inFolderList) {
+                        groups.forEach { onFolderToggle(it.key, it.value, false) }
+                    } else if (inOpenFolder) {
+                        onFolderToggle(openFolder ?: "", current, false)
+                    } else {
+                        onClear(current)
+                    }
+                }) {
                     Text("إلغاء التحديد", fontWeight = FontWeight.Bold)
                 }
             }
@@ -538,7 +710,7 @@ fun PickerScreen(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
-                list.isEmpty() -> {
+                (if (inFolderList) groups.isEmpty() else current.isEmpty()) -> {
                     Text(
                         text = when (currentTab) {
                             "other" -> "مفيش مستندات ظاهرة. فعّل الوصول لكل الملفات أو أضف يدوياً"
@@ -550,6 +722,21 @@ fun PickerScreen(
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
+                inFolderList -> {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(groups, key = { it.key }) { g ->
+                            FolderRow(
+                                path = g.key,
+                                items = g.value,
+                                selectedCount = g.value.count { it.uri.toString() in selected },
+                                kind = currentTab,
+                                loader = loader,
+                                onOpen = { openFolder = g.key },
+                                onToggle = { on -> onFolderToggle(g.key, g.value, on) }
+                            )
+                        }
+                    }
+                }
                 useGrid -> {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
@@ -557,7 +744,7 @@ fun PickerScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(list, key = { it.uri.toString() }) { f ->
+                        items(current, key = { it.uri.toString() }) { f ->
                             GridCell(f, currentTab, f.uri.toString() in selected, loader) {
                                 onToggle(f)
                             }
@@ -566,7 +753,7 @@ fun PickerScreen(
                 }
                 else -> {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(list, key = { it.uri.toString() }) { f ->
+                        items(current, key = { it.uri.toString() }) { f ->
                             ListRow(f, currentTab, f.uri.toString() in selected, loader) {
                                 onToggle(f)
                             }
