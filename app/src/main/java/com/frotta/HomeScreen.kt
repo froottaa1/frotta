@@ -1441,53 +1441,10 @@ fun HomeScreen() {
                         }
 
                         if (s == "receive" && !connected && qrImage != null) {
-                            AppearIn(100) {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(28.dp))
-                                            .background(Color.White)
-                                            .padding(18.dp)
-                                    ) {
-                                        Image(
-                                            bitmap = qrImage,
-                                            contentDescription = "QR",
-                                            modifier = Modifier.size(230.dp)
-                                        )
-                                    }
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "أو اكتب الكود ده في الهاتف الآخر",
-                                color = Ink,
-                                fontSize = 14.sp,
-                                modifier = Modifier.align(Alignment.CenterHorizontally)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.CenterHorizontally)
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .background(Ink)
-                                    .padding(horizontal = 22.dp, vertical = 12.dp)
-                            ) {
-                                Text(
-                                    text = token.chunked(4).joinToString("  "),
-                                    color = Yellow,
-                                    fontSize = 26.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "أو دوّر عليه من الهاتف الآخر، هيظهر باسم: $myName",
-                                color = Ink,
-                                fontSize = 13.sp,
-                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            ReceiverWaiting(
+                                qr = qrImage,
+                                deviceName = myName,
+                                code = token
                             )
                             Spacer(modifier = Modifier.height(20.dp))
                         }
