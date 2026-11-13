@@ -6,24 +6,19 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -55,6 +50,8 @@ import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -77,7 +74,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -87,6 +83,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
@@ -180,6 +177,11 @@ private fun newToken(): String {
     return (1..8).map { chars[random.nextInt(chars.length)] }.joinToString("")
 }
 
+private fun sanitizeName(s: String): String {
+    val clean = s.replace("|", " ").trim().take(30)
+    return if (clean.isEmpty()) Build.MODEL else clean
+}
+
 private fun formatSize(bytes: Long): String {
     if (bytes < 1024) return "$bytes B"
     val kb = bytes / 1024.0
@@ -195,10 +197,44 @@ private fun prettyName(name: String): String {
     return cloneCategories.firstOrNull { it.key == key }?.title ?: name
 }
 
+@Suppress("DEPRECATION")
+private fun nearbyTempDir(): File {
+    return File(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+        ".nearby"
+    )
+}
+
+private fun dirSize(f: File): Long {
+    if (!f.exists()) return 0L
+    if (f.isFile) return f.length()
+    var total = 0L
+    f.listFiles()?.forEach { total += dirSize(it) }
+    return total
+}
+
+private fun tempSize(context: Context): Long {
+    return dirSize(context.cacheDir) + dirSize(nearbyTempDir())
+}
+
+private fun prepareApkUri(context: Context): Uri? {
+    return try {
+        val src = File(context.applicationInfo.sourceDir)
+        val dir = File(context.cacheDir, "share")
+        dir.mkdirs()
+        val dst = File(dir, "Frotta.apk")
+        src.copyTo(dst, overwrite = true)
+        FileProvider.getUriForFile(context, context.packageName + ".fileprovider", dst)
+    } catch (e: Exception) {
+        null
+    }
+}
+
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val prefs = remember { context.getSharedPreferences("frotta", Context.MODE_PRIVATE) }
 
     var screen by remember { mutableStateOf("home") }
     var sendStage by remember { mutableStateOf("pick") }
@@ -215,6 +251,7 @@ fun HomeScreen() {
     var pickTab by remember { mutableStateOf("photos") }
     var lists by remember { mutableStateOf<Map<String, List<MediaItem>>>(emptyMap()) }
     var sel by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var folderMarks by remember { mutableStateOf<Set<String>>(emptySet()) }
     var extraUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var permsVersion by remember { mutableStateOf(0) }
     var afterPerms by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -253,7 +290,21 @@ fun HomeScreen() {
     var showManual by remember { mutableStateOf(false) }
     var manualCode by remember { mutableStateOf("") }
     val transfers = remember { mutableStateListOf<TransferItem>() }
-    val myName = remember { Build.MODEL }
+
+    var myName by remember {
+        mutableStateOf(sanitizeName(prefs.getString("device_name", null) ?: Build.MODEL))
+    }
+    val found = remember { mutableStateListOf<Pair<String, String>>() }
+    var connectingTo by remember { mutableStateOf<String?>(null) }
+    var requestFrom by remember { mutableStateOf<Triple<String, String, String>?>(null) }
+    var cacheSizeText by remember { mutableStateOf("") }
+    val appVersion = remember {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0"
+        } catch (e: Exception) {
+            "1.0"
+        }
+    }
 
     fun importSmsNow(file: File) {
         status = "جاري كتابة الرسائل..."
@@ -342,6 +393,9 @@ fun HomeScreen() {
             onConnected = {
                 connected = true
                 searching = false
+                connectingTo = null
+                requestFrom = null
+                found.clear()
             },
             onDisconnected = {
                 connected = false
@@ -378,7 +432,13 @@ fun HomeScreen() {
                 if (cur.none { it.name == file.name }) {
                     appsFiles = appsFiles + (pkg to (cur + file))
                 }
-            }
+            },
+            onDeviceFound = { id, name ->
+                if (found.none { it.first == id }) found.add(id to name)
+            },
+            onDeviceLost = { id -> found.removeAll { it.first == id } },
+            onRequest = { id, name, digits -> requestFrom = Triple(id, name, digits) },
+            onConnectionFailed = { connectingTo = null }
         )
     }
 
@@ -437,6 +497,45 @@ fun HomeScreen() {
         }
     }
 
+    fun openAppSettingsScreen() {
+        status = ""
+        cacheSizeText = ""
+        screen = "settings"
+    }
+
+    fun shareApp() {
+        scope.launch {
+            val uri = withContext(Dispatchers.IO) { prepareApkUri(context) }
+            if (uri == null) {
+                status = "تعذر تجهيز ملف التطبيق"
+            } else {
+                try {
+                    val i = Intent(Intent.ACTION_SEND)
+                    i.type = "application/vnd.android.package-archive"
+                    i.putExtra(Intent.EXTRA_STREAM, uri)
+                    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    val chooser = Intent.createChooser(i, "مشاركة Frotta")
+                    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(chooser)
+                    status = "اختار بلوتوث أو Quick Share من القايمة"
+                } catch (e: Exception) {
+                    status = "تعذر فتح قايمة المشاركة"
+                }
+            }
+        }
+    }
+
+    fun clearTemp() {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+                nearbyTempDir().deleteRecursively()
+            }
+            cacheSizeText = formatSize(withContext(Dispatchers.IO) { tempSize(context) })
+            status = "تم مسح الملفات المؤقتة"
+        }
+    }
+
     fun startInstall(pkg: String) {
         val files = appsFiles[pkg] ?: emptyList()
         val need = appMeta[pkg]?.second ?: 0
@@ -467,6 +566,24 @@ fun HomeScreen() {
         }
     }
 
+    fun beginBrowse() {
+        if (hasAllPerms(context, requiredPermissions())) {
+            found.clear()
+            connectingTo = null
+            searching = true
+            manager.startBrowsing(myName)
+        } else {
+            permDenied = true
+            status = "لازم توافق على صلاحيات البلوتوث والموقع عشان الاتصال"
+        }
+    }
+
+    fun connectToDevice(id: String) {
+        connectingTo = id
+        status = "بطلب الاتصال..."
+        manager.connectTo(id)
+    }
+
     fun startScan() {
         val options = GmsBarcodeScannerOptions.Builder()
             .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
@@ -475,6 +592,8 @@ fun HomeScreen() {
             .addOnSuccessListener { barcode ->
                 val raw = barcode.rawValue ?: ""
                 if (raw.startsWith("FROTTA:")) {
+                    found.clear()
+                    connectingTo = null
                     searching = true
                     manager.startSearching(myName, raw.removePrefix("FROTTA:"))
                 } else {
@@ -495,6 +614,8 @@ fun HomeScreen() {
         if (code.length != 8) {
             status = "الكود لازم يكون 8 حروف وأرقام"
         } else {
+            found.clear()
+            connectingTo = null
             searching = true
             manager.startSearching(myName, code)
         }
@@ -529,22 +650,27 @@ fun HomeScreen() {
 
     fun goConnect() {
         sendStage = "connect"
-        requestThen(requiredPermissions()) {
-            if (hasAllPerms(context, requiredPermissions())) {
-                startScan()
-            } else {
-                permDenied = true
-                status = "لازم توافق على صلاحيات البلوتوث والموقع عشان الاتصال"
-            }
-        }
+        requestThen(requiredPermissions()) { beginBrowse() }
     }
 
     fun confirmPick() {
-        val chosen = lists.values.flatten().filter { it.uri.toString() in sel }
-        val keepDates = cloneMode
         val out = ArrayList<OutFile>()
-        chosen.forEach {
-            out.add(OutFile(it.uri, it.name, "", if (keepDates) it.modified else 0L))
+        lists.forEach { (tab, items) ->
+            items.filter { it.uri.toString() in sel }.forEach { m ->
+                val mark = "$tab|${m.folder}"
+                val folderName = if (!cloneMode && mark in folderMarks) {
+                    val label = m.folder.substringAfterLast('/').ifEmpty { "Root" }
+                    when (tab) {
+                        "photos" -> "Pictures/Frotta/$label"
+                        "videos" -> "Movies/Frotta/$label"
+                        "audio" -> "Music/Frotta/$label"
+                        else -> ""
+                    }
+                } else {
+                    ""
+                }
+                out.add(OutFile(m.uri, m.name, folderName, 0L))
+            }
         }
         extraUris.forEach { out.add(OutFile(it, "", "")) }
         if (out.isEmpty()) {
@@ -563,6 +689,7 @@ fun HomeScreen() {
             sending = true
             status = "جاري الإرسال..."
             sel = emptySet()
+            folderMarks = emptySet()
             extraUris = emptyList()
             sendStage = "connect"
             manager.sendQueue(out)
@@ -582,6 +709,7 @@ fun HomeScreen() {
         val hasAny = chosen.isNotEmpty() || (kind == "docs" && extraUris.isNotEmpty())
         modes = modes + (kind to (if (hasAny) "pick" else "all"))
         sel = emptySet()
+        folderMarks = emptySet()
         extraUris = emptyList()
         sendStage = "cloneSelect"
     }
@@ -710,6 +838,9 @@ fun HomeScreen() {
     fun goHome() {
         manager.stopAll()
         transfers.clear()
+        found.clear()
+        connectingTo = null
+        requestFrom = null
         connected = false
         searching = false
         cloneMode = false
@@ -737,6 +868,7 @@ fun HomeScreen() {
         lists = emptyMap()
         docsScan = null
         sel = emptySet()
+        folderMarks = emptySet()
         extraUris = emptyList()
         pickTab = "photos"
         sendStage = "pick"
@@ -751,15 +883,19 @@ fun HomeScreen() {
     fun goBack() {
         if (screen == "send" && sendStage == "pick" && connected) {
             sel = emptySet()
+            folderMarks = emptySet()
             extraUris = emptyList()
             sendStage = "connect"
         } else if (screen == "send" && sendStage == "cloneKindPick") {
             sel = emptySet()
+            folderMarks = emptySet()
             extraUris = emptyList()
             sendStage = "cloneSelect"
         } else if (screen == "send" && sendStage == "connect" && !connected) {
             manager.stopAll()
             searching = false
+            found.clear()
+            connectingTo = null
             status = ""
             showManual = false
             batch = emptyList()
@@ -782,7 +918,11 @@ fun HomeScreen() {
     LaunchedEffect(needRestart) {
         if (needRestart) {
             needRestart = false
-            if (screen == "receive") beginReceive()
+            if (screen == "receive") {
+                beginReceive()
+            } else if (screen == "send" && sendStage == "connect") {
+                beginBrowse()
+            }
         }
     }
 
@@ -791,6 +931,12 @@ fun HomeScreen() {
             allFiles = hasAllFilesAccess()
             smsIsDefault = SmsSync.isDefault(context)
             delay(1000)
+        }
+    }
+
+    LaunchedEffect(screen) {
+        if (screen == "settings") {
+            cacheSizeText = formatSize(withContext(Dispatchers.IO) { tempSize(context) })
         }
     }
 
@@ -844,6 +990,7 @@ fun HomeScreen() {
             batchTotal = batch.size
             sending = true
             sel = emptySet()
+            folderMarks = emptySet()
             extraUris = emptyList()
             status = "جاري الإرسال..."
             manager.sendQueue(batch)
@@ -912,6 +1059,36 @@ fun HomeScreen() {
 
     BackHandler(enabled = screen != "home") { goBack() }
 
+    val rf = requestFrom
+    if (rf != null) {
+        AlertDialog(
+            onDismissRequest = {
+                manager.rejectRequest(rf.first)
+                requestFrom = null
+            },
+            title = { Text("طلب اتصال", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("«${rf.second}» عايز يتصل بيك.\nتأكد إن الرمز ${rf.third} هو نفس الرمز الظاهر عنده.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    manager.acceptRequest(rf.first)
+                    requestFrom = null
+                }) {
+                    Text("قبول", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    manager.rejectRequest(rf.first)
+                    requestFrom = null
+                }) {
+                    Text("رفض")
+                }
+            }
+        )
+    }
+
     if (screen == "send" && (sendStage == "pick" || sendStage == "cloneKindPick")) {
         val isKindPick = sendStage == "cloneKindPick"
         val access = remember(permsVersion, pickTab) {
@@ -947,6 +1124,12 @@ fun HomeScreen() {
             },
             onSelectAll = { list -> sel = sel + list.map { it.uri.toString() } },
             onClear = { list -> sel = sel - list.map { it.uri.toString() }.toSet() },
+            onFolderToggle = { path, items, on ->
+                val keys = items.map { it.uri.toString() }
+                sel = if (on) sel + keys else sel - keys.toSet()
+                val mk = "$pickTab|$path"
+                folderMarks = if (on) folderMarks + mk else folderMarks - mk
+            },
             onPickOther = { otherPicker.launch(arrayOf("*/*")) },
             onOpenSettings = { openSettings() },
             onOpenAllFiles = { openAllFiles() },
@@ -981,7 +1164,7 @@ fun HomeScreen() {
                 }
             }
 
-            AppHeader()
+            AppHeader(showSettings = screen == "home", onSettings = { openAppSettingsScreen() })
             Spacer(modifier = Modifier.height(20.dp))
 
             if (smsIsDefault) {
@@ -995,7 +1178,7 @@ fun HomeScreen() {
                 Column {
                     if (s == "home") {
                         AppearIn(150) {
-                            BigCard(Icons.Rounded.FileUpload, "إرسال", "اختار الملفات وبعدين امسح الكود") {
+                            BigCard(Icons.Rounded.FileUpload, "إرسال", "اختار الملفات وبعدين اختار الهاتف") {
                                 cloneMode = false
                                 status = ""
                                 screen = "send"
@@ -1006,7 +1189,7 @@ fun HomeScreen() {
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         AppearIn(300) {
-                            BigCard(Icons.Rounded.FileDownload, "استقبال", "اعرض كود عشان الهاتف الآخر يتصل") {
+                            BigCard(Icons.Rounded.FileDownload, "استقبال", "خلّي هاتفك ظاهر للهاتف الآخر") {
                                 cloneMode = false
                                 status = ""
                                 screen = "receive"
@@ -1019,6 +1202,21 @@ fun HomeScreen() {
                                 screen = "cloneRole"
                             }
                         }
+                    } else if (s == "settings") {
+                        SettingsScreen(
+                            deviceName = myName,
+                            version = appVersion,
+                            cacheSize = cacheSizeText,
+                            message = status,
+                            onSaveName = { n ->
+                                val clean = sanitizeName(n)
+                                prefs.edit().putString("device_name", clean).apply()
+                                myName = clean
+                                status = "تم حفظ الاسم: $clean"
+                            },
+                            onShare = { shareApp() },
+                            onClear = { clearTemp() }
+                        )
                     } else if (s == "cloneRole") {
                         Text(
                             text = "استنساخ",
@@ -1133,6 +1331,13 @@ fun HomeScreen() {
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "أو دوّر عليه من الهاتف الآخر، هيظهر باسم: $myName",
+                                color = Ink,
+                                fontSize = 13.sp,
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            )
                             Spacer(modifier = Modifier.height(20.dp))
                         }
 
@@ -1214,48 +1419,47 @@ fun HomeScreen() {
                                 fontWeight = FontWeight.Bold,
                                 color = Ink
                             )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            if (searching) {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    PulseRings()
-                                }
-                                Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                RadarView(diameter = 240.dp)
                             }
-                            Button(
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = if (searching) "جاري البحث عن أجهزة قريبة..." else "البحث متوقف",
+                                color = Ink,
+                                fontSize = 14.sp,
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
+                            )
+                            TextButton(
                                 onClick = { goConnect() },
-                                shape = RoundedCornerShape(20.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(58.dp)
+                                modifier = Modifier.align(Alignment.CenterHorizontally)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.QrCodeScanner,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text("امسح الكود", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text("إعادة البحث", color = Ink, fontWeight = FontWeight.Bold)
                             }
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            found.forEach { d ->
+                                DeviceCard(
+                                    name = d.second,
+                                    connecting = connectingTo == d.first
+                                ) { connectToDevice(d.first) }
+                                Spacer(modifier = Modifier.height(10.dp))
+                            }
+
+                            OptionCard(
+                                Icons.Rounded.QrCodeScanner,
+                                "مسح رمز QR",
+                                "امسح الرمز اللي على شاشة الهاتف المستقبِل"
+                            ) { startScan() }
                             Spacer(modifier = Modifier.height(10.dp))
-                            OutlinedButton(
-                                onClick = { showManual = !showManual },
-                                shape = RoundedCornerShape(20.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(52.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Keyboard,
-                                    contentDescription = null,
-                                    tint = Ink,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text("إدخال الكود يدوياً", color = Ink, fontWeight = FontWeight.Bold)
-                            }
+                            OptionCard(
+                                Icons.Rounded.Keyboard,
+                                "إدخال الكود يدوياً",
+                                "لو الكاميرا مش شغالة"
+                            ) { showManual = !showManual }
                             AnimatedVisibility(visible = showManual) {
                                 Column {
                                     Spacer(modifier = Modifier.height(10.dp))
@@ -1333,6 +1537,7 @@ fun HomeScreen() {
                                     OutlinedButton(
                                         onClick = {
                                             sel = emptySet()
+                                            folderMarks = emptySet()
                                             extraUris = emptyList()
                                             sendStage = "pick"
                                         },
@@ -1499,14 +1704,17 @@ private fun AllFilesCard(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun AppHeader() {
+private fun AppHeader(showSettings: Boolean, onSettings: () -> Unit) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val scale by animateFloatAsState(
         targetValue = if (shown) 1f else 0.5f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
     )
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Image(
             painter = painterResource(R.drawable.ic_logo),
             contentDescription = null,
@@ -1518,7 +1726,7 @@ private fun AppHeader() {
                 }
         )
         Spacer(modifier = Modifier.width(14.dp))
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Frotta",
                 fontSize = 32.sp,
@@ -1530,6 +1738,23 @@ private fun AppHeader() {
                 fontSize = 14.sp,
                 color = Ink
             )
+        }
+        if (showSettings) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Ink)
+                    .clickable(onClick = onSettings),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Settings,
+                    contentDescription = null,
+                    tint = Yellow,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
         }
     }
 }
@@ -1603,31 +1828,6 @@ private fun BigCard(
                 fontSize = 13.sp
             )
         }
-    }
-}
-
-@Composable
-private fun PulseRings() {
-    val transition = rememberInfiniteTransition()
-    val p by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        )
-    )
-    Canvas(modifier = Modifier.size(170.dp)) {
-        val maxR = size.minDimension / 2
-        for (i in 0..2) {
-            val f = (p + i / 3f) % 1f
-            drawCircle(
-                color = Ink.copy(alpha = (1f - f) * 0.6f),
-                radius = maxR * f,
-                style = Stroke(width = 5f)
-            )
-        }
-        drawCircle(color = Ink, radius = maxR * 0.2f)
     }
 }
 
