@@ -93,8 +93,12 @@ class NearbyManager(
     private val onDeviceFound: (String, String) -> Unit = { _, _ -> },
     private val onDeviceLost: (String) -> Unit = { _ -> },
     private val onRequest: (String, String, String) -> Unit = { _, _, _ -> },
-    private val onConnectionFailed: () -> Unit = {}
+    private val onConnectionFailed: () -> Unit = {},
+    private val onPeer: (String) -> Unit = {}
 ) {
+    @Volatile
+    var confirmIncoming: Boolean = true
+
     private val appContext = context.applicationContext
     private val client: ConnectionsClient = Nearby.getConnectionsClient(appContext)
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -200,11 +204,18 @@ class NearbyManager(
             val shownName = info.endpointName.substringBeforeLast('|')
             val digits = info.authenticationDigits ?: ""
             if (endpointId == requestedEndpoint) {
+                onPeer(shownName)
                 onStatus("الرمز: $digits (لازم يطابق الرمز اللي ظاهر عند الهاتف الآخر)")
                 client.acceptConnection(endpointId, payloadCallback)
             } else if (expectedToken.isNotEmpty() && suffix == expectedToken) {
-                client.acceptConnection(endpointId, payloadCallback)
+                onPeer(shownName)
+                if (receiving && confirmIncoming) {
+                    onRequest(endpointId, shownName, digits)
+                } else {
+                    client.acceptConnection(endpointId, payloadCallback)
+                }
             } else if (receiving && suffix == SEARCH_MARK) {
+                onPeer(shownName)
                 onRequest(endpointId, shownName, digits)
             } else {
                 client.rejectConnection(endpointId)
