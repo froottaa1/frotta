@@ -24,8 +24,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Button
@@ -33,6 +35,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -292,7 +295,10 @@ fun SettingsScreen(
     version: String,
     cacheSize: String,
     message: String,
+    confirm: Boolean,
+    onConfirm: (Boolean) -> Unit,
     onSaveName: (String) -> Unit,
+    onBattery: () -> Unit,
     onShare: () -> Unit,
     onClear: () -> Unit
 ) {
@@ -338,6 +344,39 @@ fun SettingsScreen(
                     .height(48.dp)
             ) {
                 Text("حفظ", fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+
+        SettingCard(Icons.Rounded.Lock, "تأكيد قبل الاستقبال") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "اطلب موافقتي قبل ما أي هاتف يتصل بيا ويبعتلي ملفات. (البحث بيطلب الموافقة دايماً)",
+                    fontSize = 13.sp,
+                    color = UInk,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Switch(checked = confirm, onCheckedChange = onConfirm)
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+
+        SettingCard(Icons.Rounded.BatteryFull, "استمرار النقل") {
+            Text(
+                text = "بعض الهواتف بتوقف التطبيق لتوفير البطارية. افتح الإعدادات واختار Frotta ثم \"بدون قيود\" أو \"عدم التحسين\".",
+                fontSize = 13.sp,
+                color = UInk
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = onBattery,
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Text("فتح إعدادات البطارية", color = UInk, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
