@@ -7,7 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
-import android.provider.Settings
+import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,6 +24,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,11 +47,12 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
-import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -63,11 +65,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +81,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -112,6 +117,14 @@ private fun requiredPermissions(): Array<String> {
         list += Manifest.permission.NEARBY_WIFI_DEVICES
     }
     return list.toTypedArray()
+}
+
+private fun notifPerms(): Array<String> {
+    return if (Build.VERSION.SDK_INT >= 33) {
+        arrayOf(Manifest.permission.POST_NOTIFICATIONS)
+    } else {
+        emptyArray()
+    }
 }
 
 private fun mediaPermissions(): Array<String> {
@@ -157,6 +170,7 @@ private fun receiverDataPermissions(): Array<String> {
 private fun receivePermissions(clone: Boolean): Array<String> {
     val list = ArrayList<String>()
     list.addAll(requiredPermissions())
+    list.addAll(notifPerms())
     if (clone) {
         list.addAll(receiverDataPermissions())
     } else if (Build.VERSION.SDK_INT < 29) {
@@ -294,6 +308,7 @@ fun HomeScreen() {
     var myName by remember {
         mutableStateOf(sanitizeName(prefs.getString("device_name", null) ?: Build.MODEL))
     }
+    var confirmIncoming by remember { mutableStateOf(prefs.getBoolean("confirm_receive", true)) }
     val found = remember { mutableStateListOf<Pair<String, String>>() }
     var connectingTo by remember { mutableStateOf<String?>(null) }
     var requestFrom by remember { mutableStateOf<Triple<String, String, String>?>(null) }
@@ -304,6 +319,41 @@ fun HomeScreen() {
         } catch (e: Exception) {
             "1.0"
         }
+    }
+
+    var history by remember { mutableStateOf(HistoryStore.load(prefs)) }
+    var peerName by remember { mutableStateOf("") }
+    var histFiles by remember { mutableStateOf(0) }
+    var histFailed by remember { mutableStateOf(0) }
+    var histSkipped by remember { mutableStateOf(0) }
+    var histBytes by remember { mutableStateOf(0L) }
+
+    fun finishSession() {
+        if (histFiles + histFailed + histSkipped > 0) {
+            val kind = when {
+                screen == "send" && cloneMode -> "clone_send"
+                screen == "send" -> "send"
+                screen == "receive" && cloneMode -> "clone_receive"
+                else -> "receive"
+            }
+            history = HistoryStore.add(
+                prefs,
+                HistoryEntry(
+                    System.currentTimeMillis(),
+                    kind,
+                    peerName.ifEmpty { "هاتف آخر" },
+                    histFiles,
+                    histFailed,
+                    histSkipped,
+                    histBytes
+                )
+            )
+        }
+        histFiles = 0
+        histFailed = 0
+        histSkipped = 0
+        histBytes = 0L
+        peerName = ""
     }
 
     fun importSmsNow(file: File) {
@@ -400,13 +450,20 @@ fun HomeScreen() {
             onDisconnected = {
                 connected = false
                 sending = false
+                finishSession()
                 status = "انقطع الاتصال. أعد الاتصال وهيكمل من اللي وصل"
                 needRestart = true
             },
             onTransfer = { item ->
                 val i = transfers.indexOfFirst { it.id == item.id }
                 if (item.done) {
-                    if (item.skipped) skippedCount++
+                    if (item.skipped) {
+                        skippedCount++
+                        histSkipped++
+                    } else {
+                        histFiles++
+                        histBytes += item.total
+                    }
                     if (item.sending) {
                         doneCount++
                     } else if (!item.skipped) {
@@ -417,6 +474,7 @@ fun HomeScreen() {
                         if (item.note.isNotEmpty()) lastSaved = item.note
                     }
                 }
+                if (item.failed) histFailed++
                 if (item.failed && item.sending) failedCount++
                 if (item.done || (item.failed && item.sending)) {
                     if (i >= 0) transfers.removeAt(i)
@@ -438,17 +496,23 @@ fun HomeScreen() {
             },
             onDeviceLost = { id -> found.removeAll { it.first == id } },
             onRequest = { id, name, digits -> requestFrom = Triple(id, name, digits) },
-            onConnectionFailed = { connectingTo = null }
+            onConnectionFailed = { connectingTo = null },
+            onPeer = { peerName = it }
         )
     }
 
+    SideEffect { manager.confirmIncoming = confirmIncoming }
+
     DisposableEffect(Unit) {
-        onDispose { manager.stopAll() }
+        onDispose {
+            manager.stopAll()
+            KeepAlive.stop(context)
+        }
     }
 
     fun openSettings() {
         val i = Intent(
-            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS,
             Uri.parse("package:" + context.packageName)
         )
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -457,7 +521,17 @@ fun HomeScreen() {
 
     fun openDefaultApps() {
         try {
-            val i = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+            val i = Intent(AndroidSettings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(i)
+        } catch (e: Exception) {
+            openSettings()
+        }
+    }
+
+    fun openBatterySettings() {
+        try {
+            val i = Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(i)
         } catch (e: Exception) {
@@ -468,7 +542,7 @@ fun HomeScreen() {
     fun openUnknownSources() {
         try {
             val i = Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                AndroidSettings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                 Uri.parse("package:" + context.packageName)
             )
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -481,14 +555,14 @@ fun HomeScreen() {
     fun openAllFiles() {
         try {
             val i = Intent(
-                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                AndroidSettings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                 Uri.parse("package:" + context.packageName)
             )
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(i)
         } catch (e: Exception) {
             try {
-                val i2 = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                val i2 = Intent(AndroidSettings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
                 i2.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(i2)
             } catch (e2: Exception) {
@@ -626,6 +700,7 @@ fun HomeScreen() {
     ) { result ->
         permsVersion++
         val denied = result.filterValues { !it }.keys
+            .filter { it != Manifest.permission.POST_NOTIFICATIONS }
         permDenied = denied.isNotEmpty()
         if (denied.isNotEmpty()) {
             status = "فيه ${denied.size} صلاحيات مترفضة. تقدر تفتح الإعدادات وتفعّلها"
@@ -836,6 +911,7 @@ fun HomeScreen() {
     }
 
     fun goHome() {
+        finishSession()
         manager.stopAll()
         transfers.clear()
         found.clear()
@@ -1057,6 +1133,36 @@ fun HomeScreen() {
         }.sortedBy { it.label.lowercase() }
     }
 
+    val view = LocalView.current
+    val busy = connected &&
+        (transfers.isNotEmpty() || (sending && doneCount + failedCount < batchTotal))
+    DisposableEffect(busy) {
+        view.keepScreenOn = busy
+        onDispose { view.keepScreenOn = false }
+    }
+
+    val notifText = if (screen == "send") {
+        if (batchTotal > 0) {
+            "جاري الإرسال: ${doneCount + failedCount} / $batchTotal"
+        } else {
+            "متصل بالهاتف الآخر"
+        }
+    } else {
+        "جاري الاستلام: ${received.values.sum()}"
+    }
+    val notifLatest by rememberUpdatedState(notifText)
+    LaunchedEffect(connected) {
+        if (connected) {
+            KeepAlive.start(context, notifLatest)
+            while (true) {
+                delay(3000)
+                KeepAlive.update(context, notifLatest)
+            }
+        } else {
+            KeepAlive.stop(context)
+        }
+    }
+
     BackHandler(enabled = screen != "home") { goBack() }
 
     val rf = requestFrom
@@ -1164,7 +1270,14 @@ fun HomeScreen() {
                 }
             }
 
-            AppHeader(showSettings = screen == "home", onSettings = { openAppSettingsScreen() })
+            AppHeader(
+                showButtons = screen == "home",
+                onHistory = {
+                    status = ""
+                    screen = "history"
+                },
+                onSettings = { openAppSettingsScreen() }
+            )
             Spacer(modifier = Modifier.height(20.dp))
 
             if (smsIsDefault) {
@@ -1178,29 +1291,59 @@ fun HomeScreen() {
                 Column {
                     if (s == "home") {
                         AppearIn(150) {
-                            BigCard(Icons.Rounded.FileUpload, "إرسال", "اختار الملفات وبعدين اختار الهاتف") {
-                                cloneMode = false
-                                status = ""
-                                screen = "send"
-                                sendStage = "pick"
-                                pickTab = "photos"
-                                requestThen(requiredPermissions() + mediaPermissions()) { }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                SquareCard(
+                                    Icons.Rounded.FileUpload,
+                                    "إرسال",
+                                    "اختار الملفات ثم الهاتف",
+                                    Modifier.weight(1f)
+                                ) {
+                                    cloneMode = false
+                                    status = ""
+                                    screen = "send"
+                                    sendStage = "pick"
+                                    pickTab = "photos"
+                                    requestThen(
+                                        requiredPermissions() + mediaPermissions() + notifPerms()
+                                    ) { }
+                                }
+                                SquareCard(
+                                    Icons.Rounded.FileDownload,
+                                    "استقبال",
+                                    "خلّي هاتفك ظاهر للهاتف الآخر",
+                                    Modifier.weight(1f)
+                                ) {
+                                    cloneMode = false
+                                    status = ""
+                                    screen = "receive"
+                                    requestThen(receivePermissions(false)) { beginReceive() }
+                                }
                             }
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
                         AppearIn(300) {
-                            BigCard(Icons.Rounded.FileDownload, "استقبال", "خلّي هاتفك ظاهر للهاتف الآخر") {
-                                cloneMode = false
-                                status = ""
-                                screen = "receive"
-                                requestThen(receivePermissions(false)) { beginReceive() }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        AppearIn(450) {
-                            BigCard(Icons.Rounded.ContentCopy, "استنساخ", "انقل كل بيانات الهاتف القديم للجديد") {
+                            BigCard(
+                                Icons.Rounded.ContentCopy,
+                                "استنساخ",
+                                "انقل كل بيانات الهاتف القديم للجديد"
+                            ) {
                                 screen = "cloneRole"
                             }
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                        AppearIn(450) {
+                            RecentSection(history) {
+                                status = ""
+                                screen = "history"
+                            }
+                        }
+                    } else if (s == "history") {
+                        HistoryScreen(history) {
+                            HistoryStore.clear(prefs)
+                            history = emptyList()
                         }
                     } else if (s == "settings") {
                         SettingsScreen(
@@ -1208,12 +1351,18 @@ fun HomeScreen() {
                             version = appVersion,
                             cacheSize = cacheSizeText,
                             message = status,
+                            confirm = confirmIncoming,
+                            onConfirm = { v ->
+                                confirmIncoming = v
+                                prefs.edit().putBoolean("confirm_receive", v).apply()
+                            },
                             onSaveName = { n ->
                                 val clean = sanitizeName(n)
                                 prefs.edit().putString("device_name", clean).apply()
                                 myName = clean
                                 status = "تم حفظ الاسم: $clean"
                             },
+                            onBattery = { openBatterySettings() },
                             onShare = { shareApp() },
                             onClear = { clearTemp() }
                         )
@@ -1232,7 +1381,9 @@ fun HomeScreen() {
                             status = ""
                             screen = "send"
                             sendStage = "cloneSelect"
-                            requestThen(requiredPermissions() + senderDataPermissions()) { }
+                            requestThen(
+                                requiredPermissions() + senderDataPermissions() + notifPerms()
+                            ) { }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         BigCard(Icons.Rounded.Restore, "الهاتف الجديد", "هسترد عليه البيانات") {
@@ -1704,7 +1855,26 @@ private fun AllFilesCard(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun AppHeader(showSettings: Boolean, onSettings: () -> Unit) {
+private fun HeaderButton(icon: ImageVector, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(46.dp)
+            .clip(CircleShape)
+            .background(Ink)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = Yellow,
+            modifier = Modifier.size(24.dp)
+        )
+    }
+}
+
+@Composable
+private fun AppHeader(showButtons: Boolean, onHistory: () -> Unit, onSettings: () -> Unit) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val scale by animateFloatAsState(
@@ -1739,22 +1909,10 @@ private fun AppHeader(showSettings: Boolean, onSettings: () -> Unit) {
                 color = Ink
             )
         }
-        if (showSettings) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(Ink)
-                    .clickable(onClick = onSettings),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Settings,
-                    contentDescription = null,
-                    tint = Yellow,
-                    modifier = Modifier.size(26.dp)
-                )
-            }
+        if (showButtons) {
+            HeaderButton(Icons.Rounded.History, onHistory)
+            Spacer(modifier = Modifier.width(8.dp))
+            HeaderButton(Icons.Rounded.Settings, onSettings)
         }
     }
 }
