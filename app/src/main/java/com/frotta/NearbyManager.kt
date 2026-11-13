@@ -31,6 +31,7 @@ import java.io.InputStream
 import java.util.concurrent.Executors
 
 private const val DOCS_PREFIX = "__frotta_docs"
+private const val SEARCH_MARK = "SEARCH"
 
 private fun isDocFolder(folder: String): Boolean {
     return folder == DOCS_PREFIX || folder.startsWith("$DOCS_PREFIX/")
@@ -88,7 +89,11 @@ class NearbyManager(
     private val onDisconnected: () -> Unit,
     private val onTransfer: (TransferItem) -> Unit,
     private val onDataFile: (String, File) -> Unit = { _, _ -> },
-    private val onAppFile: (String, File) -> Unit = { _, _ -> }
+    private val onAppFile: (String, File) -> Unit = { _, _ -> },
+    private val onDeviceFound: (String, String) -> Unit = { _, _ -> },
+    private val onDeviceLost: (String) -> Unit = { _ -> },
+    private val onRequest: (String, String, String) -> Unit = { _, _, _ -> },
+    private val onConnectionFailed: () -> Unit = {}
 ) {
     private val appContext = context.applicationContext
     private val client: ConnectionsClient = Nearby.getConnectionsClient(appContext)
@@ -101,6 +106,9 @@ class NearbyManager(
     private var connectedEndpoint: String? = null
     private var expectedToken: String = ""
     private var myName: String = ""
+    private var receiving = false
+    private var browsing = false
+    private var requestedEndpoint: String? = null
 
     private val fileIds = HashSet<Long>()
     private val outgoingIds = HashSet<Long>()
@@ -188,9 +196,16 @@ class NearbyManager(
 
     private val connectionCallback = object : ConnectionLifecycleCallback() {
         override fun onConnectionInitiated(endpointId: String, info: ConnectionInfo) {
-            val token = info.endpointName.substringAfterLast('|')
-            if (expectedToken.isNotEmpty() && token == expectedToken) {
+            val suffix = info.endpointName.substringAfterLast('|')
+            val shownName = info.endpointName.substringBeforeLast('|')
+            val digits = info.authenticationDigits ?: ""
+            if (endpointId == requestedEndpoint) {
+                onStatus("الرمز: $digits (لازم يطابق الرمز اللي ظاهر عند الهاتف الآخر)")
                 client.acceptConnection(endpointId, payloadCallback)
+            } else if (expectedToken.isNotEmpty() && suffix == expectedToken) {
+                client.acceptConnection(endpointId, payloadCallback)
+            } else if (receiving && suffix == SEARCH_MARK) {
+                onRequest(endpointId, shownName, digits)
             } else {
                 client.rejectConnection(endpointId)
                 onStatus("تم رفض اتصال غير مصرح به")
@@ -200,17 +215,22 @@ class NearbyManager(
         override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
             if (result.status.isSuccess) {
                 connectedEndpoint = endpointId
+                requestedEndpoint = null
+                browsing = false
                 client.stopAdvertising()
                 client.stopDiscovery()
                 onStatus("تم الاتصال")
                 onConnected()
             } else {
-                onStatus("فشل الاتصال")
+                if (endpointId == requestedEndpoint) requestedEndpoint = null
+                onStatus("فشل الاتصال أو الهاتف الآخر رفض الطلب")
+                onConnectionFailed()
             }
         }
 
         override fun onDisconnected(endpointId: String) {
             connectedEndpoint = null
+            requestedEndpoint = null
             resetTransfers()
             onStatus("انقطع الاتصال")
             onDisconnected()
@@ -219,34 +239,75 @@ class NearbyManager(
 
     private val discoveryCallback = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
+            if (browsing) {
+                onDeviceFound(endpointId, info.endpointName.substringBeforeLast('|'))
+                return
+            }
             val token = info.endpointName.substringAfterLast('|')
             if (expectedToken.isNotEmpty() && token == expectedToken) {
                 onStatus("لقيت الهاتف، بتصل...")
                 client.stopDiscovery()
                 client.requestConnection("$myName|$expectedToken", endpointId, connectionCallback)
-                    .addOnFailureListener { onStatus("فشل الاتصال: ${it.message}") }
+                    .addOnFailureListener {
+                        onStatus("فشل الاتصال: ${it.message}")
+                        onConnectionFailed()
+                    }
             }
         }
 
-        override fun onEndpointLost(endpointId: String) {}
+        override fun onEndpointLost(endpointId: String) {
+            if (browsing) onDeviceLost(endpointId)
+        }
     }
 
     fun startReceiving(deviceName: String, token: String) {
         expectedToken = token
         myName = deviceName
+        receiving = true
         val options = AdvertisingOptions.Builder().setStrategy(strategy).build()
         client.startAdvertising("$deviceName|$token", serviceId, connectionCallback, options)
-            .addOnSuccessListener { onStatus("جاهز. خلّي الهاتف الآخر يمسح الكود") }
+            .addOnSuccessListener { onStatus("جاهز. خلّي الهاتف الآخر يمسح الكود أو يدوّر عليك") }
             .addOnFailureListener { onStatus("فشل: ${it.message}") }
     }
 
     fun startSearching(deviceName: String, token: String) {
         expectedToken = token
         myName = deviceName
+        browsing = false
         val options = DiscoveryOptions.Builder().setStrategy(strategy).build()
+        client.stopDiscovery()
         client.startDiscovery(serviceId, discoveryCallback, options)
             .addOnSuccessListener { onStatus("بدور على الهاتف...") }
             .addOnFailureListener { onStatus("فشل: ${it.message}") }
+    }
+
+    fun startBrowsing(deviceName: String) {
+        expectedToken = ""
+        myName = deviceName
+        browsing = true
+        val options = DiscoveryOptions.Builder().setStrategy(strategy).build()
+        client.stopDiscovery()
+        client.startDiscovery(serviceId, discoveryCallback, options)
+            .addOnSuccessListener { onStatus("بدور على أجهزة قريبة...") }
+            .addOnFailureListener { onStatus("فشل البحث: ${it.message}") }
+    }
+
+    fun connectTo(endpointId: String) {
+        requestedEndpoint = endpointId
+        client.requestConnection("$myName|$SEARCH_MARK", endpointId, connectionCallback)
+            .addOnFailureListener {
+                requestedEndpoint = null
+                onStatus("فشل الاتصال: ${it.message}")
+                onConnectionFailed()
+            }
+    }
+
+    fun acceptRequest(endpointId: String) {
+        client.acceptConnection(endpointId, payloadCallback)
+    }
+
+    fun rejectRequest(endpointId: String) {
+        client.rejectConnection(endpointId)
     }
 
     fun sendFiles(uris: List<Uri>) {
@@ -327,7 +388,10 @@ class NearbyManager(
         client.stopDiscovery()
         client.stopAllEndpoints()
         connectedEndpoint = null
+        requestedEndpoint = null
         expectedToken = ""
+        receiving = false
+        browsing = false
         resetTransfers()
     }
 
@@ -435,6 +499,19 @@ class NearbyManager(
         fileMtimes.remove(id)
     }
 
+    private fun deleteTemp(payload: Payload) {
+        try {
+            val uri = payload.asFile()?.asUri() ?: return
+            if (uri.scheme == "file") {
+                val p = uri.path
+                if (p != null) File(p).delete()
+            } else {
+                appContext.contentResolver.delete(uri, null, null)
+            }
+        } catch (e: Exception) {
+        }
+    }
+
     private fun saveIncoming(id: Long) {
         if (!finishedIn.add(id)) return
         val payload = incoming[id] ?: return
@@ -451,6 +528,7 @@ class NearbyManager(
                 val target = appFile(folder, name)
                 target.parentFile?.mkdirs()
                 val ok = copyToFile(payload, target)
+                if (ok) deleteTemp(payload)
                 mainHandler.post {
                     cleanupIncoming(id)
                     onTransfer(
@@ -470,6 +548,7 @@ class NearbyManager(
             saver.execute {
                 val target = File(appContext.cacheDir, name)
                 val ok = copyToFile(payload, target)
+                if (ok) deleteTemp(payload)
                 mainHandler.post {
                     cleanupIncoming(id)
                     onTransfer(TransferItem(id, name, false, total, total, ok, !ok))
@@ -493,6 +572,7 @@ class NearbyManager(
             } else {
                 saveFile(payload, name, realFolder, mtime, doc)
             }
+            if (r.ok) deleteTemp(payload)
             mainHandler.post {
                 cleanupIncoming(id)
                 onTransfer(
