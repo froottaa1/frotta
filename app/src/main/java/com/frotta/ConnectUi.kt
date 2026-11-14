@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryFull
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
@@ -47,7 +48,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -57,10 +57,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.cos
 import kotlin.math.sin
-
-private val UInk = Color(0xFF111111)
-private val UYellow = Color(0xFFFFD600)
-private val USoft = Color(0xFFFFE866)
 
 @Composable
 fun RadarView(diameter: Dp = 240.dp) {
@@ -81,24 +77,25 @@ fun RadarView(diameter: Dp = 240.dp) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val c = center
             val r = size.minDimension / 2f
+            val line = Pal.radar
 
-            drawCircle(color = UInk, radius = r - 2f, center = c, style = Stroke(width = 4f))
+            drawCircle(color = line, radius = r - 2f, center = c, style = Stroke(width = 4f))
             listOf(0.75f, 0.5f, 0.28f).forEach { f ->
                 drawCircle(
-                    color = UInk.copy(alpha = 0.35f),
+                    color = line.copy(alpha = 0.35f),
                     radius = r * f,
                     center = c,
                     style = Stroke(width = 2f)
                 )
             }
             drawLine(
-                color = UInk.copy(alpha = 0.25f),
+                color = line.copy(alpha = 0.25f),
                 start = Offset(c.x - r, c.y),
                 end = Offset(c.x + r, c.y),
                 strokeWidth = 2f
             )
             drawLine(
-                color = UInk.copy(alpha = 0.25f),
+                color = line.copy(alpha = 0.25f),
                 start = Offset(c.x, c.y - r),
                 end = Offset(c.x, c.y + r),
                 strokeWidth = 2f
@@ -114,7 +111,7 @@ fun RadarView(diameter: Dp = 240.dp) {
                 val ex = c.x + (outer * cos(a)).toFloat()
                 val ey = c.y + (outer * sin(a)).toFloat()
                 drawLine(
-                    color = UInk.copy(alpha = 0.7f),
+                    color = line.copy(alpha = 0.7f),
                     start = Offset(sx, sy),
                     end = Offset(ex, ey),
                     strokeWidth = 2f
@@ -126,7 +123,7 @@ fun RadarView(diameter: Dp = 240.dp) {
                 for (k in 0 until 28) {
                     val alpha = 0.32f * (1f - k / 28f)
                     drawArc(
-                        color = UInk.copy(alpha = alpha),
+                        color = line.copy(alpha = alpha),
                         startAngle = -(k + 1) * 2f,
                         sweepAngle = 2f,
                         useCenter = true,
@@ -135,7 +132,7 @@ fun RadarView(diameter: Dp = 240.dp) {
                     )
                 }
                 drawLine(
-                    color = UInk,
+                    color = line,
                     start = c,
                     end = Offset(c.x + sweepR, c.y),
                     strokeWidth = 4f
@@ -146,14 +143,14 @@ fun RadarView(diameter: Dp = 240.dp) {
             modifier = Modifier
                 .size(84.dp)
                 .clip(CircleShape)
-                .background(UYellow)
-                .border(3.dp, UInk, CircleShape),
+                .background(Pal.accent)
+                .border(3.dp, Pal.ink, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Rounded.PhoneAndroid,
                 contentDescription = null,
-                tint = UInk,
+                tint = Pal.ink,
                 modifier = Modifier.size(44.dp)
             )
         }
@@ -166,7 +163,7 @@ fun DeviceCard(name: String, connecting: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(UInk)
+            .background(Pal.card)
             .clickable(onClick = onClick)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -175,13 +172,13 @@ fun DeviceCard(name: String, connecting: Boolean, onClick: () -> Unit) {
             modifier = Modifier
                 .size(52.dp)
                 .clip(CircleShape)
-                .background(UYellow),
+                .background(Pal.accent),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Rounded.PhoneAndroid,
                 contentDescription = null,
-                tint = UInk,
+                tint = Pal.ink,
                 modifier = Modifier.size(28.dp)
             )
         }
@@ -191,19 +188,19 @@ fun DeviceCard(name: String, connecting: Boolean, onClick: () -> Unit) {
                 text = name,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
-                color = UYellow,
+                color = Pal.accent,
                 maxLines = 1
             )
             Text(
                 text = if (connecting) "بطلب الاتصال... استنى الهاتف الآخر يقبل" else "اضغط للاتصال",
                 fontSize = 12.sp,
-                color = USoft
+                color = Pal.onCardSub
             )
         }
         if (connecting) {
             CircularProgressIndicator(
                 modifier = Modifier.size(24.dp),
-                color = UYellow,
+                color = Pal.accent,
                 strokeWidth = 2.dp
             )
         }
@@ -216,7 +213,7 @@ fun OptionCard(icon: ImageVector, title: String, subtitle: String, onClick: () -
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(UInk)
+            .background(Pal.card)
             .clickable(onClick = onClick)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -225,13 +222,13 @@ fun OptionCard(icon: ImageVector, title: String, subtitle: String, onClick: () -
             modifier = Modifier
                 .size(52.dp)
                 .clip(CircleShape)
-                .background(UYellow),
+                .background(Pal.accent),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = UInk,
+                tint = Pal.ink,
                 modifier = Modifier.size(28.dp)
             )
         }
@@ -241,9 +238,9 @@ fun OptionCard(icon: ImageVector, title: String, subtitle: String, onClick: () -
                 text = title,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
-                color = UYellow
+                color = Pal.accent
             )
-            Text(text = subtitle, fontSize = 12.sp, color = USoft)
+            Text(text = subtitle, fontSize = 12.sp, color = Pal.onCardSub)
         }
     }
 }
@@ -258,7 +255,7 @@ private fun SettingCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(USoft)
+            .background(Pal.soft)
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -266,13 +263,13 @@ private fun SettingCard(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(UInk),
+                    .background(Pal.chip),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = UYellow,
+                    tint = Pal.onChip,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -281,7 +278,7 @@ private fun SettingCard(
                 text = title,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = UInk
+                color = Pal.onSoft
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -296,7 +293,9 @@ fun SettingsScreen(
     cacheSize: String,
     message: String,
     confirm: Boolean,
+    dark: Boolean,
     onConfirm: (Boolean) -> Unit,
+    onDark: (Boolean) -> Unit,
     onSaveName: (String) -> Unit,
     onBattery: () -> Unit,
     onShare: () -> Unit,
@@ -309,7 +308,7 @@ fun SettingsScreen(
             text = "الإعدادات",
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
-            color = UInk
+            color = Pal.onPage
         )
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -318,13 +317,27 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(UInk)
+                    .background(Pal.card)
                     .padding(14.dp)
             ) {
-                Text(text = message, color = UYellow, fontSize = 14.sp)
+                Text(text = message, color = Pal.accent, fontSize = 14.sp)
             }
             Spacer(modifier = Modifier.height(12.dp))
         }
+
+        SettingCard(Icons.Rounded.DarkMode, "المظهر") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "الوضع الداكن",
+                    fontSize = 14.sp,
+                    color = Pal.onSoft,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Switch(checked = dark, onCheckedChange = onDark)
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
 
         SettingCard(Icons.Rounded.PhoneAndroid, "اسم الهاتف الظاهر للآخرين") {
             OutlinedTextField(
@@ -353,7 +366,7 @@ fun SettingsScreen(
                 Text(
                     text = "اطلب موافقتي قبل ما أي هاتف يتصل بيا ويبعتلي ملفات. (البحث بيطلب الموافقة دايماً)",
                     fontSize = 13.sp,
-                    color = UInk,
+                    color = Pal.onSoft,
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -366,7 +379,7 @@ fun SettingsScreen(
             Text(
                 text = "بعض الهواتف بتوقف التطبيق لتوفير البطارية. افتح الإعدادات واختار Frotta ثم \"بدون قيود\" أو \"عدم التحسين\".",
                 fontSize = 13.sp,
-                color = UInk
+                color = Pal.onSoft
             )
             Spacer(modifier = Modifier.height(10.dp))
             OutlinedButton(
@@ -376,7 +389,7 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .height(48.dp)
             ) {
-                Text("فتح إعدادات البطارية", color = UInk, fontWeight = FontWeight.Bold)
+                Text("فتح إعدادات البطارية", color = Pal.onSoft, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -385,7 +398,7 @@ fun SettingsScreen(
             Text(
                 text = "ابعت Frotta لهاتف تاني عن طريق البلوتوث أو Quick Share. الهاتف التاني لازم يسمح بالتثبيت من مصدر خارجي.",
                 fontSize = 13.sp,
-                color = UInk
+                color = Pal.onSoft
             )
             Spacer(modifier = Modifier.height(10.dp))
             Button(
@@ -404,7 +417,7 @@ fun SettingsScreen(
             Text(
                 text = if (cacheSize.isEmpty()) "جاري الحساب..." else "الحجم الحالي: $cacheSize",
                 fontSize = 13.sp,
-                color = UInk
+                color = Pal.onSoft
             )
             Spacer(modifier = Modifier.height(10.dp))
             OutlinedButton(
@@ -414,7 +427,7 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .height(48.dp)
             ) {
-                Text("مسح الملفات المؤقتة", color = UInk, fontWeight = FontWeight.Bold)
+                Text("مسح الملفات المؤقتة", color = Pal.onSoft, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -424,24 +437,24 @@ fun SettingsScreen(
                 text = "Frotta",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = UInk
+                color = Pal.onSoft
             )
             Text(
                 text = "تطبيق لنقل الملفات والبيانات بين هواتف أندرويد بدون إنترنت.",
                 fontSize = 13.sp,
-                color = UInk
+                color = Pal.onSoft
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "الإصدار: $version", fontSize = 13.sp, color = UInk)
+            Text(text = "الإصدار: $version", fontSize = 13.sp, color = Pal.onSoft)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "تطوير: أبو عمر الخيامي",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = UInk
+                color = Pal.onSoft
             )
-            Text(text = "أبو عمر الخيامي سوفت وير", fontSize = 13.sp, color = UInk)
+            Text(text = "أبو عمر الخيامي سوفت وير", fontSize = 13.sp, color = Pal.onSoft)
         }
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(12.dp))
     }
 }
