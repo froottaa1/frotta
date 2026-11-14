@@ -40,9 +40,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val RInk = Color(0xFF111111)
-private val RYellow = Color(0xFFFFD600)
-private val RSoft = Color(0xFFFFE866)
 private val RGreen = Color(0xFF4CAF50)
 private val RAmber = Color(0xFFFFB300)
 
@@ -67,7 +64,7 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
             text = "في انتظار الاتصال...",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = RInk
+            color = Pal.onPage
         )
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -79,7 +76,7 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(36.dp))
-                .background(RInk)
+                .background(Pal.card)
         ) {
             Column(
                 modifier = Modifier
@@ -117,14 +114,14 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(Color(0xFF2A2A2A))
+                        .background(Color(0xFF2E2E2E))
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.PhoneAndroid,
                         contentDescription = null,
-                        tint = RYellow,
+                        tint = Pal.accent,
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
@@ -132,7 +129,7 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
                         text = deviceName,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
-                        color = RYellow,
+                        color = Pal.accent,
                         maxLines = 1
                     )
                     Spacer(modifier = Modifier.width(10.dp))
@@ -154,7 +151,7 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
 
                 fun seg(a: Offset, b: Offset) {
                     drawLine(
-                        color = RYellow,
+                        color = Pal.accent,
                         start = a,
                         end = b,
                         strokeWidth = sw,
@@ -181,18 +178,18 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
         Text(
             text = "أو اكتب الكود ده في الهاتف الآخر",
             fontSize = 13.sp,
-            color = RInk
+            color = Pal.onPage
         )
         Spacer(modifier = Modifier.height(6.dp))
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(18.dp))
-                .background(RInk)
+                .background(Pal.card)
                 .padding(horizontal = 22.dp, vertical = 10.dp)
         ) {
             Text(
                 text = code.chunked(4).joinToString("  "),
-                color = RYellow,
+                color = Pal.accent,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -204,7 +201,7 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(20.dp))
-                .background(RSoft)
+                .background(Pal.soft)
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -212,13 +209,13 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(RInk),
+                    .background(Pal.chip),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Info,
                     contentDescription = null,
-                    tint = RYellow,
+                    tint = Pal.onChip,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -226,7 +223,7 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
             Text(
                 text = "اطلب من الهاتف الآخر يضغط \"إرسال\" ويختار اسم هاتفك ($deviceName)، أو يمسح الرمز.",
                 fontSize = 13.sp,
-                color = RInk,
+                color = Pal.onSoft,
                 textAlign = TextAlign.Start,
                 modifier = Modifier.weight(1f)
             )
