@@ -1,5 +1,5 @@
 package com.frotta
 
-object AppInfo {
-    const val FACEBOOK_URL = ""
+object DevInfo {
+    const val FACEBOOK_URL = "https://www.facebook.com/share/1Fu6XSY57D/"
 }
