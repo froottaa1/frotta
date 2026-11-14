@@ -42,10 +42,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val CInk = Color(0xFF111111)
-private val CYellow = Color(0xFFFFD600)
-private val CSoft = Color(0xFFFFE866)
-
 val mediaKeys = setOf("photos", "videos", "audio")
 
 data class CloneCategory(
@@ -81,7 +77,7 @@ private fun ModeChip(label: String, active: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(if (active) CYellow else Color(0xFF2B2B2B))
+            .background(if (active) Pal.modeOnBg else Pal.modeOffBg)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
@@ -89,7 +85,7 @@ private fun ModeChip(label: String, active: Boolean, onClick: () -> Unit) {
             text = label,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
-            color = if (active) CInk else CSoft
+            color = if (active) Pal.modeOnFg else Pal.modeOffFg
         )
     }
 }
@@ -109,7 +105,7 @@ fun CloneSelectScreen(
             text = "اختار اللي عايز تنسخه",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = CInk
+            color = Pal.onPage
         )
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -119,7 +115,7 @@ fun CloneSelectScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
-                    .background(if (isOn) CInk else CSoft)
+                    .background(if (isOn) Pal.chip else Pal.soft)
                     .clickable { onToggle(cat.key) }
                     .padding(14.dp)
             ) {
@@ -128,13 +124,13 @@ fun CloneSelectScreen(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(CircleShape)
-                            .background(CYellow),
+                            .background(Pal.circleBg(isOn)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = cat.icon,
                             contentDescription = null,
-                            tint = CInk,
+                            tint = Pal.onCircle(isOn),
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -144,21 +140,21 @@ fun CloneSelectScreen(
                             text = cat.title,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isOn) CYellow else CInk
+                            color = if (isOn) Pal.onChip else Pal.onSoft
                         )
                         Text(
                             text = cat.subtitle,
                             fontSize = 12.sp,
-                            color = if (isOn) CSoft else CInk
+                            color = if (isOn) Pal.onChipSub else Pal.onSoft
                         )
                     }
                     Checkbox(
                         checked = isOn,
                         onCheckedChange = null,
                         colors = CheckboxDefaults.colors(
-                            checkedColor = CYellow,
-                            checkmarkColor = CInk,
-                            uncheckedColor = CInk
+                            checkedColor = Pal.onChip,
+                            checkmarkColor = Pal.chip,
+                            uncheckedColor = Pal.onSoft
                         )
                     )
                 }
@@ -189,7 +185,7 @@ fun CloneSelectScreen(
         Text(
             text = "التطبيقات بتتنقل كملفات تثبيت بس، من غير بياناتها أو حساباتها. والمستندات بترجع لنفس مساراتها لو الهاتف الجديد مفعّل الوصول لكل الملفات.",
             fontSize = 12.sp,
-            color = CInk
+            color = Pal.onPage
         )
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -224,14 +220,14 @@ fun FolderPickerScreen(
             text = "اختار المجلدات: $title",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = CInk
+            color = Pal.onPage
         )
         Spacer(modifier = Modifier.height(12.dp))
 
         if (folders == null) {
-            Text(text = "جاري التحميل...", fontSize = 14.sp, color = CInk)
+            Text(text = "جاري التحميل...", fontSize = 14.sp, color = Pal.onPage)
         } else if (folders.isEmpty()) {
-            Text(text = "مفيش مجلدات", fontSize = 14.sp, color = CInk)
+            Text(text = "مفيش مجلدات", fontSize = 14.sp, color = Pal.onPage)
         } else {
             folders.forEach { f ->
                 val isOn = f.path in chosen
@@ -239,7 +235,7 @@ fun FolderPickerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(18.dp))
-                        .background(if (isOn) CInk else CSoft)
+                        .background(if (isOn) Pal.chip else Pal.soft)
                         .clickable { onToggle(f.path) }
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -249,21 +245,21 @@ fun FolderPickerScreen(
                             text = f.label,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isOn) CYellow else CInk
+                            color = if (isOn) Pal.onChip else Pal.onSoft
                         )
                         Text(
                             text = f.path + "  ·  " + f.count + " ملف",
                             fontSize = 11.sp,
-                            color = if (isOn) CSoft else CInk
+                            color = if (isOn) Pal.onChipSub else Pal.onSoft
                         )
                     }
                     Checkbox(
                         checked = isOn,
                         onCheckedChange = null,
                         colors = CheckboxDefaults.colors(
-                            checkedColor = CYellow,
-                            checkmarkColor = CInk,
-                            uncheckedColor = CInk
+                            checkedColor = Pal.onChip,
+                            checkmarkColor = Pal.chip,
+                            uncheckedColor = Pal.onSoft
                         )
                     )
                 }
@@ -293,19 +289,19 @@ fun CloneProgressCard(done: Int, failed: Int, total: Int) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(CInk)
+            .background(Pal.card)
             .padding(20.dp)
     ) {
         Text(
             text = if (total > 0 && finished >= total) "اكتمل الإرسال" else "جاري الإرسال...",
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = CYellow
+            color = Pal.accent
         )
         Spacer(modifier = Modifier.height(12.dp))
         LinearProgressIndicator(
             progress = p,
-            color = CYellow,
+            color = Pal.accent,
             trackColor = Color(0xFF444444),
             modifier = Modifier
                 .fillMaxWidth()
@@ -316,7 +312,7 @@ fun CloneProgressCard(done: Int, failed: Int, total: Int) {
         Text(
             text = "$done / $total" + if (failed > 0) "   (فشل $failed)" else "",
             fontSize = 14.sp,
-            color = CSoft
+            color = Pal.onCardSub
         )
     }
     Spacer(modifier = Modifier.height(16.dp))
@@ -329,12 +325,12 @@ fun CloneRestoreScreen(counts: Map<String, Int> = emptyMap()) {
             text = "الاسترداد",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = CInk
+            color = Pal.onPage
         )
         Text(
             text = "الملفات بتتحفظ في نفس مجلداتها",
             fontSize = 14.sp,
-            color = CInk
+            color = Pal.onPage
         )
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -351,14 +347,14 @@ fun CloneRestoreScreen(counts: Map<String, Int> = emptyMap()) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
-                    .background(CSoft)
+                    .background(Pal.soft)
                     .padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = cat.icon,
                     contentDescription = null,
-                    tint = CInk,
+                    tint = Pal.onSoft,
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
@@ -366,13 +362,13 @@ fun CloneRestoreScreen(counts: Map<String, Int> = emptyMap()) {
                     text = cat.title,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CInk,
+                    color = Pal.onSoft,
                     modifier = Modifier.weight(1f)
                 )
                 Text(
                     text = if (got) "$n $unit" else "في الانتظار",
                     fontSize = 13.sp,
-                    color = CInk
+                    color = Pal.onSoft
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -396,14 +392,14 @@ fun AppsInstallCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(CInk)
+            .background(Pal.card)
             .padding(16.dp)
     ) {
         Text(
             text = "التطبيقات المستلمة ($done / ${rows.size} مثبّت)",
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
-            color = CYellow
+            color = Pal.accent
         )
         Spacer(modifier = Modifier.height(10.dp))
 
@@ -411,13 +407,16 @@ fun AppsInstallCard(
             Text(
                 text = "لازم تسمح لـ Frotta بتثبيت التطبيقات (مرة واحدة)",
                 fontSize = 13.sp,
-                color = CSoft
+                color = Pal.onCardSub
             )
             Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = onAllowInstall,
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = CYellow, contentColor = CInk),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Pal.accent,
+                    contentColor = Pal.ink
+                ),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("السماح بالتثبيت", fontWeight = FontWeight.Bold)
@@ -429,7 +428,10 @@ fun AppsInstallCard(
             onClick = onInstallAll,
             enabled = canInstall && pending > 0,
             shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = CYellow, contentColor = CInk),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Pal.accent,
+                contentColor = Pal.ink
+            ),
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("تثبيت الكل ($pending)", fontWeight = FontWeight.Bold)
@@ -448,7 +450,7 @@ fun AppsInstallCard(
                         text = r.label,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = CYellow,
+                        color = Pal.accent,
                         maxLines = 1
                     )
                     Text(
@@ -460,12 +462,12 @@ fun AppsInstallCard(
                             else -> "قيد الاستلام"
                         },
                         fontSize = 11.sp,
-                        color = CSoft
+                        color = Pal.onCardSub
                     )
                 }
                 if (r.ready && !r.installed && !r.installing && canInstall) {
                     TextButton(onClick = { onInstallOne(r.pkg) }) {
-                        Text("تثبيت", color = CYellow, fontWeight = FontWeight.Bold)
+                        Text("تثبيت", color = Pal.accent, fontWeight = FontWeight.Bold)
                     }
                 }
             }
