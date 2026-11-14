@@ -34,7 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -44,10 +43,6 @@ import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-private val HInk = Color(0xFF111111)
-private val HYellow = Color(0xFFFFD600)
-private val HSoft = Color(0xFFFFE866)
 
 private val dateFmt = SimpleDateFormat("d/M  h:mm a", Locale.getDefault())
 
@@ -81,7 +76,7 @@ fun SquareCard(
                 scaleY = scale
             }
             .clip(RoundedCornerShape(28.dp))
-            .background(HInk)
+            .background(Pal.card)
             .clickable(interactionSource = source, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -90,27 +85,27 @@ fun SquareCard(
             modifier = Modifier
                 .size(68.dp)
                 .clip(CircleShape)
-                .background(HYellow),
+                .background(Pal.accent),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = HInk,
+                tint = Pal.ink,
                 modifier = Modifier.size(36.dp)
             )
         }
         Spacer(modifier = Modifier.height(14.dp))
         Text(
             text = title,
-            color = HYellow,
+            color = Pal.accent,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = subtitle,
-            color = HSoft,
+            color = Pal.onCardSub,
             fontSize = 12.sp,
             textAlign = TextAlign.Center
         )
@@ -141,7 +136,7 @@ fun HistoryRow(e: HistoryEntry) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(HSoft)
+            .background(Pal.soft)
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -149,13 +144,13 @@ fun HistoryRow(e: HistoryEntry) {
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(HInk),
+                .background(Pal.chip),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = HYellow,
+                tint = Pal.onChip,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -165,16 +160,16 @@ fun HistoryRow(e: HistoryEntry) {
                 text = title,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = HInk
+                color = Pal.onSoft
             )
-            Text(text = e.peer, fontSize = 13.sp, color = HInk, maxLines = 1)
-            Text(text = details, fontSize = 12.sp, color = HInk)
+            Text(text = e.peer, fontSize = 13.sp, color = Pal.onSoft, maxLines = 1)
+            Text(text = details, fontSize = 12.sp, color = Pal.onSoft)
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = dateFmt.format(Date(e.time)),
             fontSize = 11.sp,
-            color = HInk
+            color = Pal.onSoft
         )
     }
 }
@@ -187,12 +182,12 @@ fun RecentSection(entries: List<HistoryEntry>, onShowAll: () -> Unit) {
                 text = "آخر العمليات",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = HInk,
+                color = Pal.onPage,
                 modifier = Modifier.weight(1f)
             )
             if (entries.isNotEmpty()) {
                 TextButton(onClick = onShowAll) {
-                    Text("عرض الكل", fontWeight = FontWeight.Bold, color = HInk)
+                    Text("عرض الكل", fontWeight = FontWeight.Bold, color = Pal.onPage)
                 }
             }
         }
@@ -202,7 +197,7 @@ fun RecentSection(entries: List<HistoryEntry>, onShowAll: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
-                    .border(2.dp, HInk, RoundedCornerShape(20.dp))
+                    .border(2.dp, Pal.onPage.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
                     .padding(24.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -210,14 +205,14 @@ fun RecentSection(entries: List<HistoryEntry>, onShowAll: () -> Unit) {
                     Icon(
                         imageVector = Icons.Rounded.History,
                         contentDescription = null,
-                        tint = HInk,
+                        tint = Pal.onPage,
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "لا توجد عمليات سابقة",
                         fontSize = 14.sp,
-                        color = HInk
+                        color = Pal.onPage
                     )
                 }
             }
@@ -237,11 +232,11 @@ fun HistoryScreen(entries: List<HistoryEntry>, onClear: () -> Unit) {
             text = "السجل",
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
-            color = HInk
+            color = Pal.onPage
         )
         Spacer(modifier = Modifier.height(12.dp))
         if (entries.isEmpty()) {
-            Text(text = "مفيش عمليات سابقة", fontSize = 14.sp, color = HInk)
+            Text(text = "مفيش عمليات سابقة", fontSize = 14.sp, color = Pal.onPage)
         } else {
             entries.forEach {
                 HistoryRow(it)
@@ -255,7 +250,7 @@ fun HistoryScreen(entries: List<HistoryEntry>, onClear: () -> Unit) {
                     .fillMaxWidth()
                     .height(50.dp)
             ) {
-                Text("مسح السجل", color = HInk, fontWeight = FontWeight.Bold)
+                Text("مسح السجل", color = Pal.onPage, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(modifier = Modifier.height(24.dp))
