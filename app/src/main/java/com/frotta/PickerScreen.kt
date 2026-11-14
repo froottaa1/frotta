@@ -76,10 +76,6 @@ import coil.request.ImageRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private val PInk = Color(0xFF111111)
-private val PYellow = Color(0xFFFFD600)
-private val PSoft = Color(0xFFFFE866)
-
 data class PickerTab(val key: String, val title: String, val icon: ImageVector)
 
 val pickerTabs = listOf(
@@ -108,14 +104,14 @@ private fun RoundIcon(icon: ImageVector, onClick: () -> Unit) {
         modifier = Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(PInk)
+            .background(Pal.card)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = PYellow,
+            tint = Pal.accent,
             modifier = Modifier.size(24.dp)
         )
     }
@@ -126,7 +122,7 @@ private fun TabChip(tab: PickerTab, active: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(18.dp))
-            .background(if (active) PInk else PSoft)
+            .background(if (active) Pal.chip else Pal.soft)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -134,7 +130,7 @@ private fun TabChip(tab: PickerTab, active: Boolean, onClick: () -> Unit) {
         Icon(
             imageVector = tab.icon,
             contentDescription = null,
-            tint = if (active) PYellow else PInk,
+            tint = if (active) Pal.onChip else Pal.onSoft,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(8.dp))
@@ -142,7 +138,7 @@ private fun TabChip(tab: PickerTab, active: Boolean, onClick: () -> Unit) {
             text = tab.title,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
-            color = if (active) PYellow else PInk
+            color = if (active) Pal.onChip else Pal.onSoft
         )
     }
 }
@@ -152,7 +148,7 @@ private fun ViewChip(label: String, active: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(if (active) PInk else PSoft)
+            .background(if (active) Pal.chip else Pal.soft)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
@@ -160,7 +156,7 @@ private fun ViewChip(label: String, active: Boolean, onClick: () -> Unit) {
             text = label,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
-            color = if (active) PYellow else PInk
+            color = if (active) Pal.onChip else Pal.onSoft
         )
     }
 }
@@ -171,12 +167,12 @@ private fun DocsAccessCard(onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(PInk)
+            .background(Pal.card)
             .padding(14.dp)
     ) {
         Text(
             text = "عشان يجمع المستندات (PDF وWord وExcel وDWG...) تلقائي، فعّل الوصول لكل الملفات",
-            color = PYellow,
+            color = Pal.accent,
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold
         )
@@ -184,7 +180,10 @@ private fun DocsAccessCard(onClick: () -> Unit) {
         Button(
             onClick = onClick,
             shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = PYellow, contentColor = PInk),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Pal.accent,
+                contentColor = Pal.ink
+            ),
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("تفعيل", fontWeight = FontWeight.Bold)
@@ -216,7 +215,7 @@ private fun AppIcon(pkg: String, modifier: Modifier) {
             Icon(
                 imageVector = Icons.Rounded.Apps,
                 contentDescription = null,
-                tint = PInk,
+                tint = Pal.ink,
                 modifier = Modifier.size(28.dp)
             )
         }
@@ -226,23 +225,29 @@ private fun AppIcon(pkg: String, modifier: Modifier) {
 @Composable
 private fun Thumb(item: MediaItem, kind: String, loader: ImageLoader, modifier: Modifier) {
     if (kind == "audio") {
-        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Box(
+            modifier = modifier.background(Pal.accent),
+            contentAlignment = Alignment.Center
+        ) {
             Icon(
                 imageVector = Icons.Rounded.MusicNote,
                 contentDescription = null,
-                tint = PInk,
+                tint = Pal.ink,
                 modifier = Modifier.size(32.dp)
             )
         }
     } else if (kind == "apps") {
-        AppIcon(item.folder, modifier)
+        AppIcon(item.folder, modifier.background(Pal.accent))
     } else if (kind == "other") {
-        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Box(
+            modifier = modifier.background(Pal.accent),
+            contentAlignment = Alignment.Center
+        ) {
             Text(
                 text = item.name.substringAfterLast('.', "?").uppercase().take(4),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = PInk
+                color = Pal.ink
             )
         }
     } else {
@@ -276,9 +281,9 @@ private fun GridCell(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(14.dp))
-            .background(PSoft)
+            .background(Pal.soft)
             .then(
-                if (isOn) Modifier.border(3.dp, PInk, RoundedCornerShape(14.dp)) else Modifier
+                if (isOn) Modifier.border(3.dp, Pal.chip, RoundedCornerShape(14.dp)) else Modifier
             )
             .clickable(onClick = onClick)
     ) {
@@ -306,12 +311,12 @@ private fun GridCell(
                     .align(Alignment.TopEnd)
                     .padding(6.dp)
                     .clip(CircleShape)
-                    .background(PYellow)
+                    .background(Pal.accent)
             ) {
                 Icon(
                     imageVector = Icons.Rounded.CheckCircle,
                     contentDescription = null,
-                    tint = PInk,
+                    tint = Pal.ink,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -332,7 +337,7 @@ private fun ListRow(
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(if (isOn) PInk else PSoft)
+            .background(if (isOn) Pal.chip else Pal.soft)
             .clickable(onClick = onClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -344,7 +349,6 @@ private fun ListRow(
             Modifier
                 .size(52.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(PYellow)
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -354,21 +358,21 @@ private fun ListRow(
                 overflow = TextOverflow.Ellipsis,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isOn) PYellow else PInk
+                color = if (isOn) Pal.onChip else Pal.onSoft
             )
             Text(
                 text = pkSize(item.size) + if (item.folder.isNotEmpty()) "  ·  " + item.folder else "",
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 fontSize = 11.sp,
-                color = if (isOn) PSoft else PInk
+                color = if (isOn) Pal.onChipSub else Pal.onSoft
             )
         }
         if (isOn) {
             Icon(
                 imageVector = Icons.Rounded.CheckCircle,
                 contentDescription = null,
-                tint = PYellow,
+                tint = Pal.onChip,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -397,7 +401,7 @@ private fun FolderRow(
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(if (active) PInk else PSoft)
+            .background(if (active) Pal.chip else Pal.soft)
             .clickable(onClick = onOpen)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -409,7 +413,6 @@ private fun FolderRow(
             Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(PYellow)
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -419,23 +422,23 @@ private fun FolderRow(
                 overflow = TextOverflow.Ellipsis,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (active) PYellow else PInk
+                color = if (active) Pal.onChip else Pal.onSoft
             )
             Text(
                 text = path + "  ·  " + items.size + " ملف",
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 fontSize = 11.sp,
-                color = if (active) PSoft else PInk
+                color = if (active) Pal.onChipSub else Pal.onSoft
             )
         }
         TriStateCheckbox(
             state = state,
             onClick = { onToggle(state != ToggleableState.On) },
             colors = CheckboxDefaults.colors(
-                checkedColor = PYellow,
-                checkmarkColor = PInk,
-                uncheckedColor = if (active) PYellow else PInk
+                checkedColor = Pal.onChip,
+                checkmarkColor = Pal.chip,
+                uncheckedColor = if (active) Pal.onChip else Pal.onSoft
             )
         )
     }
@@ -518,7 +521,7 @@ fun PickerScreen(
             .fillMaxSize()
             .padding(horizontal = 16.dp)
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             RoundIcon(Icons.Rounded.ArrowForward) {
@@ -529,7 +532,7 @@ fun PickerScreen(
                 text = title,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
-                color = PInk,
+                color = Pal.onPage,
                 modifier = Modifier.weight(1f)
             )
             RoundIcon(if (searching) Icons.Rounded.Close else Icons.Rounded.Search) {
@@ -583,7 +586,7 @@ fun PickerScreen(
                 Text(
                     text = "المجلد اللي بتحدده بيتحفظ باسمه عند المستلم",
                     fontSize = 11.sp,
-                    color = PInk
+                    color = Pal.onPage
                 )
             }
         }
@@ -604,7 +607,7 @@ fun PickerScreen(
                     text = (openFolder ?: "").substringAfterLast('/').ifEmpty { "الرئيسي" },
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = PInk
+                    color = Pal.onPage
                 )
             }
         }
@@ -618,7 +621,7 @@ fun PickerScreen(
                 },
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = PInk,
+                color = Pal.onPage,
                 modifier = Modifier.weight(1f)
             )
             if (current.isNotEmpty()) {
@@ -657,7 +660,7 @@ fun PickerScreen(
             ) {
                 Text(
                     text = "إضافة ملفات يدوياً ($extraCount)",
-                    color = PInk,
+                    color = Pal.onPage,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp
                 )
@@ -680,7 +683,7 @@ fun PickerScreen(
                         Text(
                             text = "محتاج صلاحية الوصول للملفات. اختار \"السماح بالكل\" مش \"اختيار صور\".",
                             fontSize = 14.sp,
-                            color = PInk
+                            color = Pal.onPage
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Button(
@@ -694,7 +697,7 @@ fun PickerScreen(
                             onClick = onRefresh,
                             shape = RoundedCornerShape(20.dp)
                         ) {
-                            Text("تحديث", color = PInk, fontWeight = FontWeight.Bold)
+                            Text("تحديث", color = Pal.onPage, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -706,7 +709,7 @@ fun PickerScreen(
                             else -> "جاري التحميل..."
                         },
                         fontSize = 14.sp,
-                        color = PInk,
+                        color = Pal.onPage,
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
@@ -718,7 +721,7 @@ fun PickerScreen(
                             else -> "مفيش ملفات"
                         },
                         fontSize = 14.sp,
-                        color = PInk,
+                        color = Pal.onPage,
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
