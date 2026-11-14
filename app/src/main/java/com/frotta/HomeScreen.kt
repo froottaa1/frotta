@@ -99,10 +99,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Ink = Color(0xFF111111)
-private val Yellow = Color(0xFFFFD600)
-private val SoftYellow = Color(0xFFFFE866)
-
 private fun requiredPermissions(): Array<String> {
     val list = mutableListOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
@@ -574,7 +570,7 @@ fun HomeScreen() {
     }
 
     fun openFacebook() {
-        val url = AppInfo.FACEBOOK_URL
+        val url = DevInfo.FACEBOOK_URL
         if (url.isBlank()) {
             status = "رابط الصفحة لسه مش متضاف"
             return
@@ -1384,9 +1380,14 @@ fun HomeScreen() {
                             cacheSize = cacheSizeText,
                             message = status,
                             confirm = confirmIncoming,
+                            dark = Pal.dark,
                             onConfirm = { v ->
                                 confirmIncoming = v
                                 prefs.edit().putBoolean("confirm_receive", v).apply()
+                            },
+                            onDark = { v ->
+                                Pal.dark = v
+                                prefs.edit().putBoolean("dark_mode", v).apply()
                             },
                             onSaveName = { n ->
                                 val clean = sanitizeName(n)
@@ -1399,7 +1400,7 @@ fun HomeScreen() {
                             onClear = { clearTemp() }
                         )
                         DeveloperCard(
-                            hasLink = AppInfo.FACEBOOK_URL.isNotBlank(),
+                            hasLink = DevInfo.FACEBOOK_URL.isNotBlank(),
                             onFacebook = { openFacebook() }
                         )
                         Spacer(modifier = Modifier.height(24.dp))
@@ -1408,10 +1409,10 @@ fun HomeScreen() {
                             text = "استنساخ",
                             fontSize = 26.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Ink
+                            color = Pal.onPage
                         )
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(text = "الهاتف ده هو...", fontSize = 14.sp, color = Ink)
+                        Text(text = "الهاتف ده هو...", fontSize = 14.sp, color = Pal.onPage)
                         Spacer(modifier = Modifier.height(16.dp))
                         BigCard(Icons.Rounded.PhoneAndroid, "الهاتف القديم", "هبعت منه البيانات") {
                             cloneMode = true
@@ -1440,7 +1441,7 @@ fun HomeScreen() {
                             text = title,
                             fontSize = 26.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Ink
+                            color = Pal.onPage
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -1450,10 +1451,10 @@ fun HomeScreen() {
                                     .fillMaxWidth()
                                     .padding(bottom = 16.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(SoftYellow)
+                                    .background(Pal.soft)
                                     .padding(14.dp)
                             ) {
-                                Text(text = status, color = Ink, fontSize = 14.sp)
+                                Text(text = status, color = Pal.onSoft, fontSize = 14.sp)
                             }
                         }
 
@@ -1472,7 +1473,11 @@ fun HomeScreen() {
                                     .fillMaxWidth()
                                     .height(50.dp)
                             ) {
-                                Text("فتح إعدادات الصلاحيات", color = Ink, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "فتح إعدادات الصلاحيات",
+                                    color = Pal.onPage,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                         }
@@ -1562,7 +1567,7 @@ fun HomeScreen() {
                                 text = "جاهز لإرسال ${batch.size} ملف",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Ink
+                                color = Pal.onPage
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Box(
@@ -1574,7 +1579,7 @@ fun HomeScreen() {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = if (searching) "جاري البحث عن أجهزة قريبة..." else "البحث متوقف",
-                                color = Ink,
+                                color = Pal.onPage,
                                 fontSize = 14.sp,
                                 modifier = Modifier.align(Alignment.CenterHorizontally)
                             )
@@ -1582,7 +1587,7 @@ fun HomeScreen() {
                                 onClick = { goConnect() },
                                 modifier = Modifier.align(Alignment.CenterHorizontally)
                             ) {
-                                Text("إعادة البحث", color = Ink, fontWeight = FontWeight.Bold)
+                                Text("إعادة البحث", color = Pal.onPage, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(8.dp))
 
@@ -1647,20 +1652,20 @@ fun HomeScreen() {
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(24.dp))
-                                        .background(Ink)
+                                        .background(Pal.card)
                                         .padding(20.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.CheckCircle,
                                         contentDescription = null,
-                                        tint = Yellow,
+                                        tint = Pal.accent,
                                         modifier = Modifier.size(28.dp)
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Text(
                                         text = "تم الاتصال",
-                                        color = Yellow,
+                                        color = Pal.accent,
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -1674,7 +1679,7 @@ fun HomeScreen() {
                                     if (skippedCount > 0) {
                                         Text(
                                             text = "اتخطّى $skippedCount ملف موجود بالفعل عند الهاتف الآخر",
-                                            color = Ink,
+                                            color = Pal.onPage,
                                             fontSize = 13.sp
                                         )
                                         Spacer(modifier = Modifier.height(12.dp))
@@ -1694,13 +1699,13 @@ fun HomeScreen() {
                                         Icon(
                                             imageVector = Icons.Rounded.FileUpload,
                                             contentDescription = null,
-                                            tint = Ink,
+                                            tint = Pal.onPage,
                                             modifier = Modifier.size(22.dp)
                                         )
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Text(
                                             "إرسال ملفات إضافية",
-                                            color = Ink,
+                                            color = Pal.onPage,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
@@ -1721,7 +1726,7 @@ fun HomeScreen() {
                                             ) {
                                                 Text(
                                                     "إعادة محاولة استرداد الرسائل",
-                                                    color = Ink,
+                                                    color = Pal.onPage,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             }
@@ -1737,7 +1742,7 @@ fun HomeScreen() {
                                             .values.sum()
                                         Text(
                                             text = "استلمت $total ملف",
-                                            color = Ink,
+                                            color = Pal.onPage,
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -1746,7 +1751,7 @@ fun HomeScreen() {
                                     if (skippedCount > 0) {
                                         Text(
                                             text = "تم تخطي $skippedCount ملف موجود بالفعل",
-                                            color = Ink,
+                                            color = Pal.onPage,
                                             fontSize = 13.sp
                                         )
                                         Spacer(modifier = Modifier.height(6.dp))
@@ -1754,7 +1759,7 @@ fun HomeScreen() {
                                     if (lastSaved.isNotEmpty()) {
                                         Text(
                                             text = "آخر ملف اتحفظ في: $lastSaved",
-                                            color = Ink,
+                                            color = Pal.onPage,
                                             fontSize = 12.sp
                                         )
                                         Spacer(modifier = Modifier.height(12.dp))
@@ -1813,7 +1818,10 @@ private fun SmsBackCard(label: String, onClick: () -> Unit) {
         Button(
             onClick = onClick,
             shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Yellow, contentColor = Ink),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Pal.accent,
+                contentColor = Pal.ink
+            ),
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("رجّع $label", fontWeight = FontWeight.Bold)
@@ -1827,12 +1835,12 @@ private fun AllFilesCard(text: String, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Ink)
+            .background(Pal.card)
             .padding(16.dp)
     ) {
         Text(
             text = text,
-            color = Yellow,
+            color = Pal.accent,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold
         )
@@ -1840,7 +1848,10 @@ private fun AllFilesCard(text: String, onClick: () -> Unit) {
         Button(
             onClick = onClick,
             shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Yellow, contentColor = Ink),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Pal.accent,
+                contentColor = Pal.ink
+            ),
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("تفعيل", fontWeight = FontWeight.Bold)
@@ -1854,14 +1865,14 @@ private fun HeaderButton(icon: ImageVector, onClick: () -> Unit) {
         modifier = Modifier
             .size(46.dp)
             .clip(CircleShape)
-            .background(Ink)
+            .background(Pal.card)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = Yellow,
+            tint = Pal.accent,
             modifier = Modifier.size(24.dp)
         )
     }
@@ -1892,7 +1903,7 @@ private fun AppHeader(
                     scaleY = scale
                 }
                 .clip(RoundedCornerShape(20.dp))
-                .background(Ink)
+                .background(Pal.card)
                 .padding(3.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -1909,7 +1920,7 @@ private fun AppHeader(
             text = "Frotta",
             fontSize = 30.sp,
             fontWeight = FontWeight.Bold,
-            color = Ink,
+            color = Pal.brand,
             modifier = Modifier.weight(1f)
         )
         if (isHome) {
@@ -1958,7 +1969,7 @@ private fun BigCard(
                 scaleY = scale
             }
             .clip(RoundedCornerShape(28.dp))
-            .background(Ink)
+            .background(Pal.card)
             .clickable(interactionSource = source, indication = null, onClick = onClick)
             .padding(22.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1967,13 +1978,13 @@ private fun BigCard(
             modifier = Modifier
                 .size(62.dp)
                 .clip(CircleShape)
-                .background(Yellow),
+                .background(Pal.accent),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = Ink,
+                tint = Pal.ink,
                 modifier = Modifier.size(32.dp)
             )
         }
@@ -1981,13 +1992,13 @@ private fun BigCard(
         Column {
             Text(
                 text = title,
-                color = Yellow,
+                color = Pal.accent,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = subtitle,
-                color = SoftYellow,
+                color = Pal.onCardSub,
                 fontSize = 13.sp
             )
         }
@@ -2007,21 +2018,21 @@ private fun TransferRow(item: TransferItem) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(SoftYellow)
+            .background(Pal.soft)
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = if (item.sending) Icons.Rounded.FileUpload else Icons.Rounded.FileDownload,
                 contentDescription = null,
-                tint = Ink,
+                tint = Pal.onSoft,
                 modifier = Modifier.size(22.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = prettyName(item.name),
                 maxLines = 1,
-                color = Ink,
+                color = Pal.onSoft,
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp
             )
@@ -2033,20 +2044,20 @@ private fun TransferRow(item: TransferItem) {
                     Icon(
                         imageVector = Icons.Rounded.Error,
                         contentDescription = null,
-                        tint = Color(0xFFB3261E),
+                        tint = Color(0xFFE5483D),
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "فشل النقل",
-                        color = Color(0xFFB3261E),
+                        color = Color(0xFFE5483D),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
                 if (item.note.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = item.note, color = Ink, fontSize = 11.sp)
+                    Text(text = item.note, color = Pal.onSoft, fontSize = 11.sp)
                 }
             }
             item.done -> Column {
@@ -2054,7 +2065,7 @@ private fun TransferRow(item: TransferItem) {
                     Icon(
                         imageVector = Icons.Rounded.CheckCircle,
                         contentDescription = null,
-                        tint = Ink,
+                        tint = Pal.onSoft,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -2064,20 +2075,20 @@ private fun TransferRow(item: TransferItem) {
                         } else {
                             "تم  " + formatSize(item.total)
                         },
-                        color = Ink,
+                        color = Pal.onSoft,
                         fontSize = 13.sp
                     )
                 }
                 if (!item.skipped && item.note.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = item.note, color = Ink, fontSize = 11.sp)
+                    Text(text = item.note, color = Pal.onSoft, fontSize = 11.sp)
                 }
             }
             else -> {
                 LinearProgressIndicator(
                     progress = animated,
-                    color = Ink,
-                    trackColor = Yellow,
+                    color = Pal.barColor,
+                    trackColor = Pal.barTrack,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(8.dp)
@@ -2087,7 +2098,7 @@ private fun TransferRow(item: TransferItem) {
                 Text(
                     text = "${(fraction * 100).toInt()}%   " +
                         formatSize(item.transferred) + " / " + formatSize(item.total),
-                    color = Ink,
+                    color = Pal.onSoft,
                     fontSize = 12.sp
                 )
             }
