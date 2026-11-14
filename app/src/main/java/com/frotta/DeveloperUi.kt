@@ -21,14 +21,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-private val DInk = Color(0xFF111111)
-private val DYellow = Color(0xFFFFD600)
-private val DSoft = Color(0xFFFFE866)
 
 @Composable
 fun DeveloperCard(hasLink: Boolean, onFacebook: () -> Unit) {
@@ -36,7 +31,7 @@ fun DeveloperCard(hasLink: Boolean, onFacebook: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(DSoft)
+            .background(Pal.soft)
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -44,13 +39,13 @@ fun DeveloperCard(hasLink: Boolean, onFacebook: () -> Unit) {
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(DInk),
+                    .background(Pal.chip),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Rounded.SupportAgent,
                     contentDescription = null,
-                    tint = DYellow,
+                    tint = Pal.onChip,
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -59,7 +54,7 @@ fun DeveloperCard(hasLink: Boolean, onFacebook: () -> Unit) {
                 text = "تواصل مع المطور",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = DInk
+                color = Pal.onSoft
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -70,7 +65,7 @@ fun DeveloperCard(hasLink: Boolean, onFacebook: () -> Unit) {
                 "رابط صفحة الفيسبوك هيتضاف قريباً."
             },
             fontSize = 13.sp,
-            color = DInk
+            color = Pal.onSoft
         )
         if (hasLink) {
             Spacer(modifier = Modifier.height(10.dp))
