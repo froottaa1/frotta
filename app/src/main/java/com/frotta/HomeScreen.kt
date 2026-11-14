@@ -228,7 +228,9 @@ private fun dirSize(f: File): Long {
 }
 
 private fun tempSize(context: Context): Long {
-    return dirSize(context.cacheDir) + dirSize(nearbyTempDir())
+    return dirSize(context.cacheDir) +
+        dirSize(nearbyTempDir()) +
+        dirSize(File(context.filesDir, "apps"))
 }
 
 private fun prepareApkUri(context: Context): Uri? {
@@ -604,7 +606,9 @@ fun HomeScreen() {
             withContext(Dispatchers.IO) {
                 context.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
                 nearbyTempDir().deleteRecursively()
+                File(context.filesDir, "apps").deleteRecursively()
             }
+            appsFiles = emptyMap()
             cacheSizeText = formatSize(withContext(Dispatchers.IO) { tempSize(context) })
             status = "تم مسح الملفات المؤقتة"
         }
@@ -728,26 +732,7 @@ fun HomeScreen() {
         requestThen(requiredPermissions()) { beginBrowse() }
     }
 
-    fun confirmPick() {
-        val out = ArrayList<OutFile>()
-        lists.forEach { (tab, items) ->
-            items.filter { it.uri.toString() in sel }.forEach { m ->
-                val mark = "$tab|${m.folder}"
-                val folderName = if (!cloneMode && mark in folderMarks) {
-                    val label = m.folder.substringAfterLast('/').ifEmpty { "Root" }
-                    when (tab) {
-                        "photos" -> "Pictures/Frotta/$label"
-                        "videos" -> "Movies/Frotta/$label"
-                        "audio" -> "Music/Frotta/$label"
-                        else -> ""
-                    }
-                } else {
-                    ""
-                }
-                out.add(OutFile(m.uri, m.name, folderName, 0L))
-            }
-        }
-        extraUris.forEach { out.add(OutFile(it, "", "")) }
+    fun finishPick(out: List<OutFile>) {
         if (out.isEmpty()) {
             status = "اختار ملف واحد على الأقل"
             return
@@ -772,6 +757,55 @@ fun HomeScreen() {
             batch = out
             batchTotal = out.size
             goConnect()
+        }
+    }
+
+    fun confirmPick() {
+        val out = ArrayList<OutFile>()
+        lists.forEach { (tab, items) ->
+            if (tab == "apps") return@forEach
+            items.filter { it.uri.toString() in sel }.forEach { m ->
+                val mark = "$tab|${m.folder}"
+                val folderName = if (!cloneMode && mark in folderMarks) {
+                    val label = m.folder.substringAfterLast('/').ifEmpty { "Root" }
+                    when (tab) {
+                        "photos" -> "Pictures/Frotta/$label"
+                        "videos" -> "Movies/Frotta/$label"
+                        "audio" -> "Music/Frotta/$label"
+                        else -> ""
+                    }
+                } else {
+                    ""
+                }
+                out.add(OutFile(m.uri, m.name, folderName, 0L))
+            }
+        }
+        extraUris.forEach { out.add(OutFile(it, "", "")) }
+
+        val appKeys = (lists["apps"] ?: emptyList())
+            .filter { it.uri.toString() in sel }
+            .map { it.folder }
+            .toSet()
+
+        if (appKeys.isEmpty()) {
+            finishPick(out)
+        } else {
+            status = "جاري تجهيز التطبيقات..."
+            scope.launch {
+                val appOut = withContext(Dispatchers.IO) {
+                    val chosen = AppsReader.readApps(context).filter { it.pkg in appKeys }
+                    val list = ArrayList<OutFile>()
+                    if (chosen.isNotEmpty()) {
+                        val meta = AppsReader.exportMeta(context, chosen)
+                        if (meta != null) {
+                            list.add(OutFile(Uri.fromFile(meta), meta.name, ""))
+                            list.addAll(AppsReader.outFiles(chosen))
+                        }
+                    }
+                    list
+                }
+                finishPick(out + appOut)
+            }
         }
     }
 
@@ -1210,7 +1244,7 @@ fun HomeScreen() {
             } else {
                 "اختيار الملفات"
             },
-            tabs = if (isKindPick) allPickerTabs.filter { it.key == pickTab } else pickerTabs,
+            tabs = if (isKindPick) allPickerTabs.filter { it.key == pickTab } else allPickerTabs,
             currentTab = pickTab,
             onTab = { pickTab = it },
             files = lists[pickTab],
@@ -1726,7 +1760,7 @@ fun HomeScreen() {
                             }
                         }
 
-                        if (s == "receive" && cloneMode && appRows.isNotEmpty()) {
+                        if (s == "receive" && appRows.isNotEmpty()) {
                             AppsInstallCard(
                                 rows = appRows,
                                 canInstall = canInstallApps,
