@@ -573,6 +573,21 @@ fun HomeScreen() {
         }
     }
 
+    fun openFacebook() {
+        val url = AppInfo.FACEBOOK_URL
+        if (url.isBlank()) {
+            status = "رابط الصفحة لسه مش متضاف"
+            return
+        }
+        try {
+            val i = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(i)
+        } catch (e: Exception) {
+            status = "تعذر فتح الرابط"
+        }
+    }
+
     fun openAppSettingsScreen() {
         status = ""
         cacheSizeText = ""
@@ -1284,33 +1299,16 @@ fun HomeScreen() {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-            Spacer(modifier = Modifier.height(20.dp))
-
-            if (screen != "home") {
-                TextButton(onClick = { goBack() }) {
-                    Icon(
-                        imageVector = Icons.Rounded.ArrowForward,
-                        contentDescription = null,
-                        tint = Ink,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "رجوع",
-                        color = Ink,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.height(4.dp))
 
             AppHeader(
-                showButtons = screen == "home",
+                isHome = screen == "home",
                 onHistory = {
                     status = ""
                     screen = "history"
                 },
-                onSettings = { openAppSettingsScreen() }
+                onSettings = { openAppSettingsScreen() },
+                onBack = { goBack() }
             )
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -1400,6 +1398,11 @@ fun HomeScreen() {
                             onShare = { shareApp() },
                             onClear = { clearTemp() }
                         )
+                        DeveloperCard(
+                            hasLink = AppInfo.FACEBOOK_URL.isNotBlank(),
+                            onFacebook = { openFacebook() }
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
                     } else if (s == "cloneRole") {
                         Text(
                             text = "استنساخ",
@@ -1865,7 +1868,12 @@ private fun HeaderButton(icon: ImageVector, onClick: () -> Unit) {
 }
 
 @Composable
-private fun AppHeader(showButtons: Boolean, onHistory: () -> Unit, onSettings: () -> Unit) {
+private fun AppHeader(
+    isHome: Boolean,
+    onHistory: () -> Unit,
+    onSettings: () -> Unit,
+    onBack: () -> Unit
+) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val scale by animateFloatAsState(
@@ -1876,34 +1884,40 @@ private fun AppHeader(showButtons: Boolean, onHistory: () -> Unit, onSettings: (
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Image(
-            painter = painterResource(R.drawable.ic_logo),
-            contentDescription = null,
+        Box(
             modifier = Modifier
-                .size(64.dp)
+                .size(60.dp)
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
                 }
-        )
-        Spacer(modifier = Modifier.width(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Frotta",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = Ink
-            )
-            Text(
-                text = "أبو عمر الخيامي سوفت وير",
-                fontSize = 14.sp,
-                color = Ink
+                .clip(RoundedCornerShape(20.dp))
+                .background(Ink)
+                .padding(3.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_logo),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(17.dp))
             )
         }
-        if (showButtons) {
+        Spacer(modifier = Modifier.width(14.dp))
+        Text(
+            text = "Frotta",
+            fontSize = 30.sp,
+            fontWeight = FontWeight.Bold,
+            color = Ink,
+            modifier = Modifier.weight(1f)
+        )
+        if (isHome) {
             HeaderButton(Icons.Rounded.History, onHistory)
             Spacer(modifier = Modifier.width(8.dp))
             HeaderButton(Icons.Rounded.Settings, onSettings)
+        } else {
+            HeaderButton(Icons.Rounded.ArrowForward, onBack)
         }
     }
 }
