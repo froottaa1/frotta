@@ -11,12 +11,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -27,60 +23,38 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 object Pal {
-    var dark by mutableStateOf(true)
+    val dark = true
 
     val accent = Color(0xFFFFE0E6)
     val ink = Color(0xFF2A0A14)
 
-    private val burg = Color(0xFF6B1A32)
-    private val burgDeep = Color(0xFF5E1229)
-    private val textDark = Color(0xFF1A0A10)
+    val page = Color(0xFF0E0E0E)
+    val onPage = Color(0xFFF2F2F2)
+    val brand = Color(0xFFE6718C)
 
-    val page: Color get() = if (dark) Color(0xFF0E0E0E) else Color(0xFFFFD600)
-    val onPage: Color get() = if (dark) Color(0xFFF2F2F2) else textDark
-    val brand: Color get() = if (dark) Color(0xFFE6718C) else burg
+    val card = Color(0xFF5E1229)
+    val onCardSub = Color(0xFFE9C4CE)
 
-    val card: Color get() = if (dark) burgDeep else burg
-    val onCardSub: Color get() = if (dark) Color(0xFFE9C4CE) else Color(0xFFF3CFD8)
+    val soft = Color(0xFF2A141B)
+    val onSoft = Color(0xFFF2F2F2)
 
-    val soft: Color get() = if (dark) Color(0xFF2A141B) else Color(0xFFFFE866)
-    val onSoft: Color get() = if (dark) Color(0xFFF2F2F2) else textDark
+    val chip = accent
+    val onChip = ink
+    val onChipSub = Color(0xCC2A0A14)
 
-    val chip: Color get() = if (dark) accent else burg
-    val onChip: Color get() = if (dark) ink else accent
-    val onChipSub: Color get() = if (dark) Color(0xCC2A0A14) else Color(0xFFF3CFD8)
+    val barColor = accent
+    val barTrack = Color(0xFF444444)
 
-    val barColor: Color get() = if (dark) accent else burg
-    val barTrack: Color get() = if (dark) Color(0xFF444444) else Color(0xFFFFF3B0)
+    val radar = accent
 
-    val radar: Color get() = if (dark) accent else burg
+    val modeOnBg = ink
+    val modeOnFg = accent
+    val modeOffBg = Color(0x22000000)
+    val modeOffFg = ink
 
-    val modeOnBg: Color get() = if (dark) ink else accent
-    val modeOnFg: Color get() = if (dark) accent else ink
-    val modeOffBg: Color get() = if (dark) Color(0x22000000) else Color(0x33000000)
-    val modeOffFg: Color get() = if (dark) ink else accent
-
-    fun circleBg(on: Boolean): Color = if (on && dark) ink else accent
-    fun onCircle(on: Boolean): Color = if (on && dark) accent else ink
+    fun circleBg(on: Boolean): Color = if (on) ink else accent
+    fun onCircle(on: Boolean): Color = if (on) accent else ink
 }
-
-private val LightScheme = lightColorScheme(
-    primary = Color(0xFF6B1A32),
-    onPrimary = Color(0xFFFFE0E6),
-    primaryContainer = Color(0xFFFFF3B0),
-    onPrimaryContainer = Color(0xFF1A0A10),
-    secondary = Color(0xFF6B1A32),
-    onSecondary = Color(0xFFFFE0E6),
-    background = Color(0xFFFFD600),
-    onBackground = Color(0xFF1A0A10),
-    surface = Color(0xFFFFF4B8),
-    onSurface = Color(0xFF1A0A10),
-    surfaceVariant = Color(0xFFFFE866),
-    onSurfaceVariant = Color(0xFF1A0A10),
-    outline = Color(0xFF6B1A32),
-    outlineVariant = Color(0xFF5A4A00),
-    error = Color(0xFFB3261E)
-)
 
 private val DarkScheme = darkColorScheme(
     primary = Color(0xFFC2476A),
@@ -157,7 +131,7 @@ fun FrottaTheme(content: @Composable () -> Unit) {
     val font = rememberAppFont()
     val typography = remember(font) { typographyWith(font) }
     MaterialTheme(
-        colorScheme = if (Pal.dark) DarkScheme else LightScheme,
+        colorScheme = DarkScheme,
         typography = typography,
         shapes = AppShapes,
         content = content
@@ -166,15 +140,14 @@ fun FrottaTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun AppBackground(content: @Composable () -> Unit) {
-    val colors = if (Pal.dark) {
-        listOf(Color(0xFF181818), Color(0xFF0E0E0E), Color(0xFF080808))
-    } else {
-        listOf(Color(0xFFFFDE2E), Color(0xFFFFD600), Color(0xFFF7C600))
-    }
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(colors))
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF181818), Color(0xFF0E0E0E), Color(0xFF080808))
+                )
+            )
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()
