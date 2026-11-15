@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryFull
-import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Lock
@@ -293,9 +292,7 @@ fun SettingsScreen(
     cacheSize: String,
     message: String,
     confirm: Boolean,
-    dark: Boolean,
     onConfirm: (Boolean) -> Unit,
-    onDark: (Boolean) -> Unit,
     onSaveName: (String) -> Unit,
     onBattery: () -> Unit,
     onShare: () -> Unit,
@@ -324,20 +321,6 @@ fun SettingsScreen(
             }
             Spacer(modifier = Modifier.height(10.dp))
         }
-
-        SettingCard(Icons.Rounded.DarkMode, "المظهر") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "الوضع الداكن",
-                    fontSize = 12.sp,
-                    color = Pal.onSoft,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Switch(checked = dark, onCheckedChange = onDark)
-            }
-        }
-        Spacer(modifier = Modifier.height(10.dp))
 
         SettingCard(Icons.Rounded.PhoneAndroid, "اسم الهاتف الظاهر للآخرين") {
             OutlinedTextField(
