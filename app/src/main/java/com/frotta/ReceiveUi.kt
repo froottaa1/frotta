@@ -1,12 +1,5 @@
 package com.frotta
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -27,35 +20,20 @@ import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 private val RGreen = Color(0xFF4CAF50)
-private val RAmber = Color(0xFFFFB300)
 
 @Composable
 fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
-    val transition = rememberInfiniteTransition(label = "scan")
-    val p by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "scanLine"
-    )
-
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -70,110 +48,56 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
 
         RadarView(diameter = 140.dp)
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(28.dp))
-                .background(Pal.card)
+                .size(180.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color.White)
         ) {
-            Column(
+            Image(
+                bitmap = qr,
+                contentDescription = "QR",
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 26.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(170.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color.White)
-                ) {
-                    Image(
-                        bitmap = qr,
-                        contentDescription = "QR",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp)
-                    )
-                    Canvas(modifier = Modifier.matchParentSize()) {
-                        val y = size.height * p
-                        drawLine(
-                            color = RAmber.copy(alpha = 0.55f),
-                            start = Offset(10.dp.toPx(), y),
-                            end = Offset(size.width - 10.dp.toPx(), y),
-                            strokeWidth = 3.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(Color(0x33000000))
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PhoneAndroid,
-                        contentDescription = null,
-                        tint = Pal.accent,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = deviceName,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Pal.accent,
-                        maxLines = 1
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(9.dp)
-                            .clip(CircleShape)
-                            .background(RGreen)
-                    )
-                }
-            }
-
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val len = 26.dp.toPx()
-                val inset = 12.dp.toPx()
-                val sw = 4.dp.toPx()
-                val w = size.width
-                val h = size.height
-
-                fun seg(a: Offset, b: Offset) {
-                    drawLine(
-                        color = Pal.accent,
-                        start = a,
-                        end = b,
-                        strokeWidth = sw,
-                        cap = StrokeCap.Round
-                    )
-                }
-
-                seg(Offset(inset, inset), Offset(inset + len, inset))
-                seg(Offset(inset, inset), Offset(inset, inset + len))
-
-                seg(Offset(w - inset, inset), Offset(w - inset - len, inset))
-                seg(Offset(w - inset, inset), Offset(w - inset, inset + len))
-
-                seg(Offset(inset, h - inset), Offset(inset + len, h - inset))
-                seg(Offset(inset, h - inset), Offset(inset, h - inset - len))
-
-                seg(Offset(w - inset, h - inset), Offset(w - inset - len, h - inset))
-                seg(Offset(w - inset, h - inset), Offset(w - inset, h - inset - len))
-            }
+                    .fillMaxSize()
+                    .padding(12.dp)
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(Pal.card)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.PhoneAndroid,
+                contentDescription = null,
+                tint = Pal.accent,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = deviceName,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = Pal.accent,
+                maxLines = 1
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(RGreen)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         Text(
             text = "أو اكتب الكود ده في الهاتف الآخر",
