@@ -141,7 +141,7 @@ fun RadarView(diameter: Dp = 240.dp) {
         }
         Box(
             modifier = Modifier
-                .size(84.dp)
+                .size(diameter * 0.32f)
                 .clip(CircleShape)
                 .background(Pal.accent)
                 .border(3.dp, Pal.ink, CircleShape),
@@ -151,7 +151,7 @@ fun RadarView(diameter: Dp = 240.dp) {
                 imageVector = Icons.Rounded.PhoneAndroid,
                 contentDescription = null,
                 tint = Pal.ink,
-                modifier = Modifier.size(44.dp)
+                modifier = Modifier.size(diameter * 0.17f)
             )
         }
     }
@@ -162,15 +162,15 @@ fun DeviceCard(name: String, connecting: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(Pal.card)
             .clickable(onClick = onClick)
-            .padding(16.dp),
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(52.dp)
+                .size(42.dp)
                 .clip(CircleShape)
                 .background(Pal.accent),
             contentAlignment = Alignment.Center
@@ -179,27 +179,27 @@ fun DeviceCard(name: String, connecting: Boolean, onClick: () -> Unit) {
                 imageVector = Icons.Rounded.PhoneAndroid,
                 contentDescription = null,
                 tint = Pal.ink,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = name,
-                fontSize = 17.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = Pal.accent,
                 maxLines = 1
             )
             Text(
                 text = if (connecting) "بطلب الاتصال... استنى الهاتف الآخر يقبل" else "اضغط للاتصال",
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 color = Pal.onCardSub
             )
         }
         if (connecting) {
             CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(22.dp),
                 color = Pal.accent,
                 strokeWidth = 2.dp
             )
@@ -212,15 +212,15 @@ fun OptionCard(icon: ImageVector, title: String, subtitle: String, onClick: () -
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(Pal.card)
             .clickable(onClick = onClick)
-            .padding(16.dp),
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(52.dp)
+                .size(42.dp)
                 .clip(CircleShape)
                 .background(Pal.accent),
             contentAlignment = Alignment.Center
@@ -229,18 +229,18 @@ fun OptionCard(icon: ImageVector, title: String, subtitle: String, onClick: () -
                 imageVector = icon,
                 contentDescription = null,
                 tint = Pal.ink,
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                fontSize = 17.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = Pal.accent
             )
-            Text(text = subtitle, fontSize = 12.sp, color = Pal.onCardSub)
+            Text(text = subtitle, fontSize = 11.sp, color = Pal.onCardSub)
         }
     }
 }
@@ -254,14 +254,14 @@ private fun SettingCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(Pal.soft)
-            .padding(16.dp)
+            .padding(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(32.dp)
                     .clip(CircleShape)
                     .background(Pal.chip),
                 contentAlignment = Alignment.Center
@@ -270,18 +270,18 @@ private fun SettingCard(
                     imageVector = icon,
                     contentDescription = null,
                     tint = Pal.onChip,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = title,
-                fontSize = 16.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = Pal.onSoft
             )
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         content()
     }
 }
@@ -306,30 +306,30 @@ fun SettingsScreen(
     Column {
         Text(
             text = "الإعدادات",
-            fontSize = 26.sp,
+            fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             color = Pal.onPage
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         if (message.isNotEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(Pal.card)
-                    .padding(14.dp)
+                    .padding(12.dp)
             ) {
-                Text(text = message, color = Pal.accent, fontSize = 14.sp)
+                Text(text = message, color = Pal.accent, fontSize = 13.sp)
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
         }
 
         SettingCard(Icons.Rounded.DarkMode, "المظهر") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "الوضع الداكن",
-                    fontSize = 14.sp,
+                    fontSize = 12.sp,
                     color = Pal.onSoft,
                     modifier = Modifier.weight(1f)
                 )
@@ -337,35 +337,35 @@ fun SettingsScreen(
                 Switch(checked = dark, onCheckedChange = onDark)
             }
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         SettingCard(Icons.Rounded.PhoneAndroid, "اسم الهاتف الظاهر للآخرين") {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it.replace("|", "").take(30) },
                 singleLine = true,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = { onSaveName(name) },
                 enabled = name.isNotBlank(),
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(40.dp)
             ) {
-                Text("حفظ", fontWeight = FontWeight.Bold)
+                Text("حفظ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         SettingCard(Icons.Rounded.Lock, "تأكيد قبل الاستقبال") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "اطلب موافقتي قبل ما أي هاتف يتصل بيا ويبعتلي ملفات. (البحث بيطلب الموافقة دايماً)",
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     color = Pal.onSoft,
                     modifier = Modifier.weight(1f)
                 )
@@ -373,88 +373,97 @@ fun SettingsScreen(
                 Switch(checked = confirm, onCheckedChange = onConfirm)
             }
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         SettingCard(Icons.Rounded.BatteryFull, "استمرار النقل") {
             Text(
-                text = "بعض الهواتف بتوقف التطبيق لتوفير البطارية. افتح الإعدادات واختار Frotta ثم \"بدون قيود\" أو \"عدم التحسين\".",
-                fontSize = 13.sp,
+                text = "بعض الهواتف بتوقف التطبيق لتوفير البطارية. افتح الإعدادات واختار Frotta Share ثم \"بدون قيود\" أو \"عدم التحسين\".",
+                fontSize = 12.sp,
                 color = Pal.onSoft
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(
                 onClick = onBattery,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(40.dp)
             ) {
-                Text("فتح إعدادات البطارية", color = Pal.onSoft, fontWeight = FontWeight.Bold)
+                Text(
+                    "فتح إعدادات البطارية",
+                    color = Pal.onSoft,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
             }
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         SettingCard(Icons.Rounded.Share, "مشاركة التطبيق") {
             Text(
-                text = "ابعت Frotta لهاتف تاني عن طريق البلوتوث أو Quick Share. الهاتف التاني لازم يسمح بالتثبيت من مصدر خارجي.",
-                fontSize = 13.sp,
+                text = "ابعت التطبيق لهاتف تاني عن طريق البلوتوث أو Quick Share. الهاتف التاني لازم يسمح بالتثبيت من مصدر خارجي.",
+                fontSize = 12.sp,
                 color = Pal.onSoft
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = onShare,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(40.dp)
             ) {
-                Text("مشاركة التطبيق", fontWeight = FontWeight.Bold)
+                Text("مشاركة التطبيق", fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         SettingCard(Icons.Rounded.Delete, "الملفات المؤقتة") {
             Text(
                 text = if (cacheSize.isEmpty()) "جاري الحساب..." else "الحجم الحالي: $cacheSize",
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 color = Pal.onSoft
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(
                 onClick = onClear,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(40.dp)
             ) {
-                Text("مسح الملفات المؤقتة", color = Pal.onSoft, fontWeight = FontWeight.Bold)
+                Text(
+                    "مسح الملفات المؤقتة",
+                    color = Pal.onSoft,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
             }
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         SettingCard(Icons.Rounded.Info, "حول التطبيق") {
             Text(
-                text = "Frotta",
-                fontSize = 20.sp,
+                text = "Frotta Share",
+                fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 color = Pal.onSoft
             )
             Text(
                 text = "تطبيق لنقل الملفات والبيانات بين هواتف أندرويد بدون إنترنت.",
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 color = Pal.onSoft
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "الإصدار: $version", fontSize = 13.sp, color = Pal.onSoft)
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(text = "الإصدار: $version", fontSize = 12.sp, color = Pal.onSoft)
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "تطوير: أبو عمر الخيامي",
-                fontSize = 14.sp,
+                text = "المطور: أحمد عمر الخيامي",
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 color = Pal.onSoft
             )
-            Text(text = "أبو عمر الخيامي سوفت وير", fontSize = 13.sp, color = Pal.onSoft)
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
     }
 }
