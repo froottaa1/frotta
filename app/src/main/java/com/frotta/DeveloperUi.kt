@@ -30,14 +30,14 @@ fun DeveloperCard(hasLink: Boolean, onFacebook: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(Pal.soft)
-            .padding(16.dp)
+            .padding(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(32.dp)
                     .clip(CircleShape)
                     .background(Pal.chip),
                 contentAlignment = Alignment.Center
@@ -46,37 +46,37 @@ fun DeveloperCard(hasLink: Boolean, onFacebook: () -> Unit) {
                     imageVector = Icons.Rounded.SupportAgent,
                     contentDescription = null,
                     tint = Pal.onChip,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = "تواصل مع المطور",
-                fontSize = 16.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = Pal.onSoft
             )
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = if (hasLink) {
                 "لأي استفسار أو اقتراح أو مشكلة، تواصل معنا على صفحة الفيسبوك."
             } else {
                 "رابط صفحة الفيسبوك هيتضاف قريباً."
             },
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             color = Pal.onSoft
         )
         if (hasLink) {
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = onFacebook,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(40.dp)
             ) {
-                Text("فتح صفحة الفيسبوك", fontWeight = FontWeight.Bold)
+                Text("فتح صفحة الفيسبوك", fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
     }
