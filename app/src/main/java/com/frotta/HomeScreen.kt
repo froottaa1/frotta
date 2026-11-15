@@ -376,7 +376,7 @@ fun HomeScreen() {
         if (f != null && SmsSync.isDefault(context)) {
             importSmsNow(f)
         } else {
-            status = "لازم توافق تخلي Frotta تطبيق الرسائل الافتراضي مؤقتاً عشان تكتب الرسائل"
+            status = "لازم توافق تخلي Frotta Share تطبيق الرسائل الافتراضي مؤقتاً عشان تكتب الرسائل"
         }
     }
 
@@ -601,7 +601,7 @@ fun HomeScreen() {
                     i.type = "application/vnd.android.package-archive"
                     i.putExtra(Intent.EXTRA_STREAM, uri)
                     i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    val chooser = Intent.createChooser(i, "مشاركة Frotta")
+                    val chooser = Intent.createChooser(i, "مشاركة Frotta Share")
                     chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(chooser)
                     status = "اختار بلوتوث أو Quick Share من القايمة"
@@ -686,7 +686,7 @@ fun HomeScreen() {
                     searching = true
                     manager.startSearching(myName, raw.removePrefix("FROTTA:"))
                 } else {
-                    status = "الكود ده مش تابع لتطبيق Frotta"
+                    status = "الكود ده مش تابع لتطبيق Frotta Share"
                 }
             }
             .addOnCanceledListener {
@@ -1380,14 +1380,9 @@ fun HomeScreen() {
                             cacheSize = cacheSizeText,
                             message = status,
                             confirm = confirmIncoming,
-                            dark = Pal.dark,
                             onConfirm = { v ->
                                 confirmIncoming = v
                                 prefs.edit().putBoolean("confirm_receive", v).apply()
-                            },
-                            onDark = { v ->
-                                Pal.dark = v
-                                prefs.edit().putBoolean("dark_mode", v).apply()
                             },
                             onSaveName = { n ->
                                 val clean = sanitizeName(n)
@@ -1809,7 +1804,7 @@ private fun SmsBackCard(label: String, onClick: () -> Unit) {
             .padding(16.dp)
     ) {
         Text(
-            text = "Frotta هو تطبيق الرسائل الافتراضي حالياً. الرسائل الجاية بتتحفظ من غير إشعار.",
+            text = "Frotta Share هو تطبيق الرسائل الافتراضي حالياً. الرسائل الجاية بتتحفظ من غير إشعار.",
             color = Color.White,
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold
@@ -1885,24 +1880,14 @@ private fun AppHeader(
     onSettings: () -> Unit,
     onBack: () -> Unit
 ) {
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { shown = true }
-    val scale by animateFloatAsState(
-        targetValue = if (shown) 1f else 0.5f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
-    )
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(60.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-                .clip(RoundedCornerShape(20.dp))
+                .size(52.dp)
+                .clip(RoundedCornerShape(18.dp))
                 .background(Pal.card)
                 .padding(3.dp),
             contentAlignment = Alignment.Center
@@ -1912,15 +1897,16 @@ private fun AppHeader(
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(17.dp))
+                    .clip(RoundedCornerShape(15.dp))
             )
         }
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = "Frotta",
-            fontSize = 30.sp,
+            text = "Frotta Share",
+            fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             color = Pal.brand,
+            maxLines = 1,
             modifier = Modifier.weight(1f)
         )
         if (isHome) {
