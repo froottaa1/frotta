@@ -62,32 +62,32 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
     ) {
         Text(
             text = "في انتظار الاتصال...",
-            fontSize = 20.sp,
+            fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
             color = Pal.onPage
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
-        RadarView(diameter = 200.dp)
+        RadarView(diameter = 140.dp)
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(36.dp))
+                .clip(RoundedCornerShape(28.dp))
                 .background(Pal.card)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 34.dp),
+                    .padding(horizontal = 16.dp, vertical = 26.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(
                     modifier = Modifier
-                        .size(220.dp)
-                        .clip(RoundedCornerShape(26.dp))
+                        .size(170.dp)
+                        .clip(RoundedCornerShape(20.dp))
                         .background(Color.White)
                 ) {
                     Image(
@@ -95,47 +95,47 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
                         contentDescription = "QR",
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(16.dp)
+                            .padding(12.dp)
                     )
                     Canvas(modifier = Modifier.matchParentSize()) {
                         val y = size.height * p
                         drawLine(
                             color = RAmber.copy(alpha = 0.55f),
-                            start = Offset(12.dp.toPx(), y),
-                            end = Offset(size.width - 12.dp.toPx(), y),
-                            strokeWidth = 4.dp.toPx(),
+                            start = Offset(10.dp.toPx(), y),
+                            end = Offset(size.width - 10.dp.toPx(), y),
+                            strokeWidth = 3.dp.toPx(),
                             cap = StrokeCap.Round
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(Color(0xFF2E2E2E))
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .background(Color(0x33000000))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.PhoneAndroid,
                         contentDescription = null,
                         tint = Pal.accent,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(18.dp)
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = deviceName,
-                        fontSize = 17.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = Pal.accent,
                         maxLines = 1
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
-                            .size(11.dp)
+                            .size(9.dp)
                             .clip(CircleShape)
                             .background(RGreen)
                     )
@@ -143,9 +143,9 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
             }
 
             Canvas(modifier = Modifier.matchParentSize()) {
-                val len = 34.dp.toPx()
-                val inset = 16.dp.toPx()
-                val sw = 5.dp.toPx()
+                val len = 26.dp.toPx()
+                val inset = 12.dp.toPx()
+                val sw = 4.dp.toPx()
                 val w = size.width
                 val h = size.height
 
@@ -173,41 +173,41 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Text(
             text = "أو اكتب الكود ده في الهاتف الآخر",
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             color = Pal.onPage
         )
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .background(Pal.card)
-                .padding(horizontal = 22.dp, vertical = 10.dp)
+                .padding(horizontal = 18.dp, vertical = 8.dp)
         ) {
             Text(
                 text = code.chunked(4).joinToString("  "),
                 color = Pal.accent,
-                fontSize = 24.sp,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .background(Pal.soft)
-                .padding(14.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(30.dp)
                     .clip(CircleShape)
                     .background(Pal.chip),
                 contentAlignment = Alignment.Center
@@ -216,13 +216,13 @@ fun ReceiverWaiting(qr: ImageBitmap, deviceName: String, code: String) {
                     imageVector = Icons.Rounded.Info,
                     contentDescription = null,
                     tint = Pal.onChip,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(17.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = "اطلب من الهاتف الآخر يضغط \"إرسال\" ويختار اسم هاتفك ($deviceName)، أو يمسح الرمز.",
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 color = Pal.onSoft,
                 textAlign = TextAlign.Start,
                 modifier = Modifier.weight(1f)
