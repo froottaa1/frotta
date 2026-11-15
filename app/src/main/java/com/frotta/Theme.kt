@@ -29,69 +29,73 @@ import androidx.compose.ui.unit.dp
 object Pal {
     var dark by mutableStateOf(true)
 
-    val accent = Color(0xFFFFD600)
-    val ink = Color(0xFF111111)
+    val accent = Color(0xFFFFE0E6)
+    val ink = Color(0xFF2A0A14)
+
+    private val burg = Color(0xFF6B1A32)
+    private val burgDeep = Color(0xFF5E1229)
+    private val textDark = Color(0xFF1A0A10)
 
     val page: Color get() = if (dark) Color(0xFF0E0E0E) else Color(0xFFFFD600)
-    val onPage: Color get() = if (dark) Color(0xFFF2F2F2) else ink
-    val brand: Color get() = if (dark) accent else ink
+    val onPage: Color get() = if (dark) Color(0xFFF2F2F2) else textDark
+    val brand: Color get() = if (dark) Color(0xFFE6718C) else burg
 
-    val card: Color get() = if (dark) Color(0xFF1F1F1F) else ink
-    val onCardSub: Color get() = if (dark) Color(0xFFBDBDBD) else Color(0xFFFFE866)
+    val card: Color get() = if (dark) burgDeep else burg
+    val onCardSub: Color get() = if (dark) Color(0xFFE9C4CE) else Color(0xFFF3CFD8)
 
-    val soft: Color get() = if (dark) Color(0xFF2A2A2A) else Color(0xFFFFE866)
-    val onSoft: Color get() = if (dark) Color(0xFFF2F2F2) else ink
+    val soft: Color get() = if (dark) Color(0xFF2A141B) else Color(0xFFFFE866)
+    val onSoft: Color get() = if (dark) Color(0xFFF2F2F2) else textDark
 
-    val chip: Color get() = if (dark) accent else ink
+    val chip: Color get() = if (dark) accent else burg
     val onChip: Color get() = if (dark) ink else accent
-    val onChipSub: Color get() = if (dark) Color(0xCC111111) else Color(0xFFFFE866)
+    val onChipSub: Color get() = if (dark) Color(0xCC2A0A14) else Color(0xFFF3CFD8)
 
-    val barColor: Color get() = if (dark) accent else ink
-    val barTrack: Color get() = if (dark) Color(0xFF444444) else accent
+    val barColor: Color get() = if (dark) accent else burg
+    val barTrack: Color get() = if (dark) Color(0xFF444444) else Color(0xFFFFF3B0)
 
-    val radar: Color get() = if (dark) accent else ink
+    val radar: Color get() = if (dark) accent else burg
 
     val modeOnBg: Color get() = if (dark) ink else accent
     val modeOnFg: Color get() = if (dark) accent else ink
-    val modeOffBg: Color get() = if (dark) Color(0x22000000) else Color(0xFF2B2B2B)
-    val modeOffFg: Color get() = if (dark) ink else Color(0xFFFFE866)
+    val modeOffBg: Color get() = if (dark) Color(0x22000000) else Color(0x33000000)
+    val modeOffFg: Color get() = if (dark) ink else accent
 
     fun circleBg(on: Boolean): Color = if (on && dark) ink else accent
     fun onCircle(on: Boolean): Color = if (on && dark) accent else ink
 }
 
 private val LightScheme = lightColorScheme(
-    primary = Color(0xFF111111),
-    onPrimary = Color(0xFFFFD600),
+    primary = Color(0xFF6B1A32),
+    onPrimary = Color(0xFFFFE0E6),
     primaryContainer = Color(0xFFFFF3B0),
-    onPrimaryContainer = Color(0xFF111111),
-    secondary = Color(0xFF111111),
-    onSecondary = Color(0xFFFFD600),
+    onPrimaryContainer = Color(0xFF1A0A10),
+    secondary = Color(0xFF6B1A32),
+    onSecondary = Color(0xFFFFE0E6),
     background = Color(0xFFFFD600),
-    onBackground = Color(0xFF111111),
+    onBackground = Color(0xFF1A0A10),
     surface = Color(0xFFFFF4B8),
-    onSurface = Color(0xFF111111),
+    onSurface = Color(0xFF1A0A10),
     surfaceVariant = Color(0xFFFFE866),
-    onSurfaceVariant = Color(0xFF111111),
-    outline = Color(0xFF111111),
+    onSurfaceVariant = Color(0xFF1A0A10),
+    outline = Color(0xFF6B1A32),
     outlineVariant = Color(0xFF5A4A00),
     error = Color(0xFFB3261E)
 )
 
 private val DarkScheme = darkColorScheme(
-    primary = Color(0xFFFFD600),
-    onPrimary = Color(0xFF111111),
-    primaryContainer = Color(0xFF3A3000),
-    onPrimaryContainer = Color(0xFFFFD600),
-    secondary = Color(0xFFFFD600),
-    onSecondary = Color(0xFF111111),
+    primary = Color(0xFFC2476A),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFF5E1229),
+    onPrimaryContainer = Color(0xFFFFE0E6),
+    secondary = Color(0xFFC2476A),
+    onSecondary = Color(0xFFFFFFFF),
     background = Color(0xFF0E0E0E),
     onBackground = Color(0xFFF2F2F2),
     surface = Color(0xFF1F1F1F),
     onSurface = Color(0xFFF2F2F2),
     surfaceVariant = Color(0xFF2B2B2B),
     onSurfaceVariant = Color(0xFFC8C8C8),
-    outline = Color(0xFF6B6B6B),
+    outline = Color(0xFF8A6A74),
     outlineVariant = Color(0xFF3C3C3C),
     error = Color(0xFFFF6B60)
 )
